@@ -1,17 +1,25 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, RotateCcw, X } from "lucide-react";
+import { Camera, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { HermesLoadingState } from "./hermes-loading-state";
 import { ScreenshotUploadZone } from "./screenshot-upload-zone";
 import { ScreenshotPreviewTable } from "./screenshot-preview-table";
+import { ScreenshotSourcesGrid } from "./screenshot-sources-grid";
+import { ImportAllButton } from "./import-all-button";
+import { ImportStatusAlert } from "./import-status-alert";
 import { applyHermesAccountBalances } from "@/lib/data/account-balances";
 import { getLedgerAccounts } from "@/lib/data/mock-account-balances";
 import { prependTransactionsToMock } from "@/lib/data/import";
 import { messageForAnalyzeError, messageForImportError } from "@/lib/screenshots/errors";
+import {
+  buildScreenshotSources,
+  enrichTransactionsWithBanks,
+  type ScreenshotSourceView,
+} from "@/lib/screenshots/build-sources";
 import type {
   HermesAccountBalance,
   HermesAnalyzeResponse,
@@ -28,37 +36,51 @@ export function ScreenshotImportFlow() {
   const [step, setStep] = useState<Step>("upload");
   const [entityHint, setEntityHint] = useState<HermesEntityHint>("auto");
   const [preview, setPreview] = useState<HermesExtractedTransaction[]>([]);
+  const [sources, setSources] = useState<ScreenshotSourceView[]>([]);
   const [batchId, setBatchId] = useState<string | undefined>();
   const [accountBalances, setAccountBalances] = useState<HermesAccountBalance[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [demo, setDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [analysing, setAnalysing] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
   const [importStorage, setImportStorage] = useState<"database" | "mock" | null>(null);
   const [analysingCount, setAnalysingCount] = useState(0);
+  const [lastFiles, setLastFiles] = useState<{ name: string; previewUrl: string }[]>([]);
 
   const clearError = useCallback(() => setError(null), []);
 
   const reset = () => {
+    lastFiles.forEach((f) => URL.revokeObjectURL(f.previewUrl));
     setStep("upload");
     setPreview([]);
+    setSources([]);
     setBatchId(undefined);
     setAccountBalances([]);
     setWarnings([]);
     setDemo(false);
     setError(null);
+    setSuccessMsg(null);
     setImportedCount(0);
     setImportStorage(null);
     setAnalysing(false);
+    setLastFiles([]);
   };
 
   const handleUpload = async (files: File[]) => {
     clearError();
+    setSuccessMsg(null);
     setAnalysingCount(files.length);
     setAnalysing(true);
     setStep("analysing");
+
+    const fileMeta = files.map((f) => ({
+      name: f.name,
+      previewUrl: URL.createObjectURL(f),
+    }));
+    setLastFiles(fileMeta);
 
     const form = new FormData();
     files.forEach((f) => form.append("images", f));
@@ -89,13 +111,21 @@ export function ScreenshotImportFlow() {
 
       const result = data as unknown as HermesAnalyzeResponse;
       if (!result.transactions?.length) {
-        setError("No transactions were found in your screenshots.");
+        setError("No transactions were found. Try clearer screenshots or include transaction lists.");
         setStep("upload");
         setAnalysing(false);
         return;
       }
 
-      setPreview(result.transactions);
+      const builtSources = buildScreenshotSources(
+        fileMeta,
+        result.transactions,
+        result.screenshotSources,
+      );
+      const enriched = enrichTransactionsWithBanks(result.transactions, builtSources);
+
+      setPreview(enriched);
+      setSources(builtSources);
       setBatchId(result.batchId);
       setAccountBalances(result.accountBalances ?? []);
       applyHermesAccountBalances(result.accountBalances);
@@ -140,6 +170,9 @@ export function ScreenshotImportFlow() {
       applyHermesAccountBalances(result.accountBalances ?? accountBalances);
       setImportedCount(result.imported);
       setImportStorage(result.storage);
+      setSuccessMsg(
+        `${result.imported} transaction${result.imported === 1 ? "" : "s"} imported successfully.`,
+      );
       setStep("done");
       router.refresh();
     } catch {
@@ -149,33 +182,36 @@ export function ScreenshotImportFlow() {
     }
   };
 
+  const bankSummary = useMemo(
+    () => [...new Set(sources.map((s) => s.bank))].join(", "),
+    [sources],
+  );
+
+  const displayWarnings = useMemo(
+    () =>
+      warnings.filter((w) => {
+        const lower = w.toLowerCase();
+        if (accountBalances.length === 0) return true;
+        return !(
+          lower.includes("no balances found") ||
+          lower.includes("bank_balance") ||
+          lower.includes("credit_balance")
+        );
+      }),
+    [warnings, accountBalances.length],
+  );
+
   return (
     <div className="space-y-6">
-      {step !== "done" && (
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to dashboard
-        </Link>
+      {step === "upload" && (
+        <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-primary">
+          <Camera className="size-3.5" />
+          Recommended daily import
+        </div>
       )}
 
       {error && (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-3 rounded-xl border border-negative/30 bg-negative/[0.06] px-4 py-3 text-sm text-negative"
-        >
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={clearError}
-            className="shrink-0 rounded p-0.5 hover:bg-negative/10"
-            aria-label="Dismiss error"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+        <ImportStatusAlert variant="error" message={error} onDismiss={clearError} />
       )}
 
       {step === "upload" && (
@@ -190,92 +226,98 @@ export function ScreenshotImportFlow() {
       {step === "analysing" && <HermesLoadingState imageCount={analysingCount} />}
 
       {step === "preview" && (
-        <div className="space-y-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-6 pb-28">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Review extracted transactions</h2>
-              <p className="text-sm text-muted-foreground">
-                Edit any field, remove rows, then import to your ledger.
+              <h2 className="text-lg font-semibold">Review all transactions</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {sources.length} screenshot{sources.length === 1 ? "" : "s"}
+                {bankSummary ? ` · ${bankSummary}` : ""} · {preview.length} transactions ready
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={reset} disabled={importing}>
-                <RotateCcw className="size-3.5" />
-                Upload more
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleImportAll}
-                disabled={importing || preview.length === 0}
-              >
-                {importing ? "Importing…" : `Import all (${preview.length})`}
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={reset} disabled={importing}>
+              <RotateCcw className="size-3.5" />
+              New batch
+            </Button>
           </div>
+
+          <ScreenshotSourcesGrid sources={sources} />
+
           {accountBalances.length > 0 ? (
-            <div className="rounded-xl border border-border/60 bg-card/40 px-4 py-3 text-sm space-y-1.5">
-              <p className="font-medium text-foreground">Balances detected — will update Personal dashboard</p>
-              <p className="text-emerald-600 dark:text-emerald-400">
-                Bank:{" "}
-                {accountBalances
-                  .filter((b) => b.kind !== "credit")
-                  .map((b) => {
-                    const name =
-                      getLedgerAccounts().find((a) => a.id === b.accountId)?.name ?? b.accountId;
-                    return `${name} ${formatCurrency(b.balance)}`;
-                  })
-                  .join(" · ") || "—"}
-              </p>
-              <p className="text-negative">
-                Cards:{" "}
-                {accountBalances
-                  .filter((b) => b.kind === "credit")
-                  .map((b) => {
-                    const name =
-                      getLedgerAccounts().find((a) => a.id === b.accountId)?.name ?? b.accountId;
-                    return `${name} ${formatCurrency(Math.abs(b.balance))}`;
-                  })
-                  .join(" · ") || "—"}
-              </p>
-            </div>
+            <ImportStatusAlert
+              variant="success"
+              title="Balances detected"
+              message={formatBalanceImportSummary(accountBalances)}
+            />
           ) : (
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200/90">
-              No balances found in the Hermes response. Include{" "}
-              <code className="text-xs">bank_balance</code> / <code className="text-xs">credit_balance</code>{" "}
-              or a <code className="text-xs">balances</code> array with account types.
-            </div>
+            <p className="rounded-xl border border-border/60 bg-card/30 px-4 py-3 text-xs text-muted-foreground">
+              No on-screen balances in this batch — you can still import all transactions. Include
+              a home-screen or balance summary screenshot next time to sync bank &amp; card totals.
+            </p>
           )}
+
           <ScreenshotPreviewTable
             rows={preview}
             onChange={setPreview}
-            warnings={warnings}
+            screenshotCount={sources.length}
+            warnings={displayWarnings}
             demo={demo}
           />
-          <div className="flex justify-end">
-            <Button onClick={handleImportAll} disabled={importing || preview.length === 0}>
-              {importing ? "Importing…" : `Import all (${preview.length})`}
-            </Button>
+        </div>
+      )}
+
+      {step === "preview" && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-background/90 px-4 py-4 backdrop-blur-xl lg:left-[248px]">
+          <div className="mx-auto max-w-5xl">
+            <ImportAllButton
+              count={preview.length}
+              loading={importing}
+              onClick={handleImportAll}
+            />
           </div>
         </div>
       )}
 
       {step === "done" && (
-        <div className="rounded-2xl border border-primary/25 bg-card p-10 text-center">
-          <CheckCircle2 className="mx-auto size-12 text-primary" />
-          <h2 className="mt-4 text-xl font-semibold">Import complete</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {importedCount} transaction{importedCount === 1 ? "" : "s"} saved
-            {importStorage === "database" ? " to your database" : " to your ledger"}.
-            Screenshots were never stored on Avaken.
-          </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <Button variant="outline" onClick={reset}>
-              Import more screenshots
-            </Button>
-            <Button onClick={() => router.push("/transactions")}>View transactions</Button>
+        <div className="space-y-6">
+          {successMsg && (
+            <ImportStatusAlert variant="success" title="Import complete" message={successMsg} />
+          )}
+          <div className="rounded-2xl border border-primary/25 bg-card p-8 text-center sm:p-10">
+            <p className="text-sm text-muted-foreground">
+              {importedCount} transaction{importedCount === 1 ? "" : "s"} saved
+              {importStorage === "database" ? " to your database" : " to your ledger"}.
+              Screenshots were never stored.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              <Button variant="outline" onClick={reset}>
+                Import another batch
+              </Button>
+              <Button onClick={() => router.push("/transactions")}>View transactions</Button>
+              <Button variant="ghost" onClick={() => router.push("/dashboard")}>
+                Dashboard
+              </Button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function formatBalanceImportSummary(balances: HermesAccountBalance[]): string {
+  const ledger = getLedgerAccounts();
+  const bankLines = balances
+    .filter((b) => b.kind !== "credit")
+    .map((b) => {
+      const name = ledger.find((a) => a.id === b.accountId)?.name ?? b.accountId;
+      return `Bank balances (${name}): ${formatCurrency(b.balance)}`;
+    });
+  const creditLines = balances
+    .filter((b) => b.kind === "credit")
+    .map((b) => {
+      const name = ledger.find((a) => a.id === b.accountId)?.name ?? b.accountId;
+      return `Credit card debt (${name}): ${formatCurrency(Math.abs(b.balance))}`;
+    });
+  return [...bankLines, ...creditLines].join(" · ");
 }

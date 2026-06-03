@@ -23,8 +23,8 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Overview" },
+  { label: "Screenshot import", href: "/import/screenshots", icon: Camera, badge: "Daily", group: "Overview" },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight, group: "Overview" },
-  { label: "Screenshot import", href: "/import/screenshots", icon: Camera, badge: "New", group: "Overview" },
   { label: "JSON import", href: "/import/json", icon: FileJson, group: "Overview" },
   { label: "Subscriptions", href: "/subscriptions", icon: CreditCard, badge: "19", group: "Overview" },
 

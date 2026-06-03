@@ -1,10 +1,12 @@
 "use client";
 
+import { useMemo } from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ENTITIES } from "@/lib/entity-context";
 import { formatCurrency } from "@/lib/format";
+import { detectBankFromText } from "@/lib/screenshots/detect-bank";
 import type { HermesExtractedTransaction } from "@/lib/hermes/types";
 import type { TxnType } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,7 @@ const TXN_TYPES: TxnType[] = ["income", "expense", "payout", "transfer", "vat", 
 interface ScreenshotPreviewTableProps {
   rows: HermesExtractedTransaction[];
   onChange: (rows: HermesExtractedTransaction[]) => void;
+  screenshotCount?: number;
   warnings?: string[];
   demo?: boolean;
 }
@@ -21,6 +24,7 @@ interface ScreenshotPreviewTableProps {
 export function ScreenshotPreviewTable({
   rows,
   onChange,
+  screenshotCount = 0,
   warnings = [],
   demo,
 }: ScreenshotPreviewTableProps) {
@@ -34,25 +38,38 @@ export function ScreenshotPreviewTable({
 
   const inflow = rows.filter((r) => r.amount > 0).reduce((a, b) => a + b.amount, 0);
   const outflow = rows.filter((r) => r.amount < 0).reduce((a, b) => a + b.amount, 0);
+  const banks = useMemo(
+    () => new Set(rows.map((r) => r.sourceBank).filter(Boolean)),
+    [rows],
+  );
 
   return (
     <div className="space-y-4">
       {(warnings.length > 0 || demo) && (
-        <div className="rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-3 text-xs text-muted-foreground">
+        <div className="rounded-xl border border-warning/30 bg-warning/[0.06] px-4 py-3 text-xs text-muted-foreground space-y-1">
           {warnings.map((w) => (
             <p key={w}>{w}</p>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
-        <MiniStat label="Rows" value={String(rows.length)} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <MiniStat label="Screenshots" value={String(screenshotCount || "—")} />
+        <MiniStat label="Transactions" value={String(rows.length)} accent="#a78bfa" />
         <MiniStat label="Inflow" value={formatCurrency(inflow)} accent="#10b981" />
         <MiniStat label="Outflow" value={formatCurrency(outflow)} accent="#f43f5e" />
       </div>
 
+      {banks.size > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Banks detected:{" "}
+          <span className="text-foreground">{[...banks].join(" · ")}</span>
+        </p>
+      )}
+
       <Card className="overflow-hidden">
-        <div className="hidden gap-2 border-b border-border/60 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-subtle lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_100px_90px_100px_90px_36px]">
+        <div className="hidden gap-2 border-b border-border/60 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-subtle xl:grid xl:grid-cols-[72px_minmax(0,1.1fr)_minmax(0,1fr)_96px_88px_96px_88px_36px]">
+          <span>Bank</span>
           <span>Description</span>
           <span>Counterparty</span>
           <span>Date</span>
@@ -64,11 +81,21 @@ export function ScreenshotPreviewTable({
         <div className="divide-y divide-border/60">
           {rows.map((row) => {
             const entityCfg = ENTITIES.find((e) => e.id === row.entity);
+            const bank = row.sourceBank ?? "—";
+            const bankAccent = detectBankFromText(bank).accent;
+
             return (
               <div
                 key={row.id}
-                className="grid gap-2 px-4 py-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_100px_90px_100px_90px_36px] lg:items-center"
+                className="grid gap-2 px-4 py-3 xl:grid-cols-[72px_minmax(0,1.1fr)_minmax(0,1fr)_96px_88px_96px_88px_36px] xl:items-center"
               >
+                <span
+                  className="self-center truncate text-[11px] font-semibold xl:text-xs"
+                  style={{ color: bankAccent }}
+                  title={bank}
+                >
+                  {bank}
+                </span>
                 <input
                   value={row.description}
                   onChange={(e) => update(row.id, { description: e.target.value })}
@@ -125,12 +152,6 @@ export function ScreenshotPreviewTable({
                 >
                   <Trash2 className="size-3.5" />
                 </Button>
-                {row.confidence != null && (
-                  <p className="col-span-full text-[10px] text-subtle lg:col-span-7">
-                    AI confidence {Math.round(row.confidence * 100)}%
-                    {row.sourceImageIndex != null && ` · screenshot #${row.sourceImageIndex + 1}`}
-                  </p>
-                )}
               </div>
             );
           })}
@@ -152,7 +173,10 @@ function MiniStat({
   return (
     <div className="rounded-xl border border-border/80 bg-card/60 px-3 py-2.5">
       <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold tabular-nums" style={accent ? { color: accent } : undefined}>
+      <p
+        className="mt-0.5 text-sm font-semibold tabular-nums"
+        style={accent ? { color: accent } : undefined}
+      >
         {value}
       </p>
     </div>

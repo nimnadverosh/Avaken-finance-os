@@ -13,6 +13,15 @@ export interface HermesAccountBalance {
   kind?: "bank" | "credit";
 }
 
+export interface HermesScreenshotSource {
+  index: number;
+  bank: string;
+  bankId?: string;
+  fileName?: string;
+  transactionCount: number;
+  confidence?: number;
+}
+
 export interface HermesExtractedTransaction {
   /** Stable id for preview row editing (client-generated if missing). */
   id: string;
@@ -26,6 +35,8 @@ export interface HermesExtractedTransaction {
   vat?: number;
   confidence?: number;
   sourceImageIndex?: number;
+  /** Auto-detected bank for this row's screenshot (Starling, RBS, etc.). */
+  sourceBank?: string;
 }
 
 export interface HermesAnalyzeResponse {
@@ -34,6 +45,8 @@ export interface HermesAnalyzeResponse {
   entity: Exclude<Entity, "consolidated"> | "mixed";
   confidence: number;
   transactions: HermesExtractedTransaction[];
+  /** Per-screenshot bank detection from Hermes vision. */
+  screenshotSources?: HermesScreenshotSource[];
   /** When Hermes reads an on-screen balance, maps to a connected account id (e.g. starling). */
   accountBalances?: HermesAccountBalance[];
   warnings: string[];

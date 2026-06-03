@@ -1,11 +1,19 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { ImagePlus, Shield, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ImagePlus, Shield, Sparkles, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SCREENSHOT_MAX_FILES } from "@/lib/screenshots/validation";
+import { detectBankFromFilename } from "@/lib/screenshots/detect-bank";
 import { ENTITIES } from "@/lib/entity-context";
 import type { HermesEntityHint } from "@/lib/hermes/types";
+
+export interface StagedScreenshot {
+  file: File;
+  previewUrl: string;
+  bank: string;
+  bankAccent: string;
+}
 
 interface ScreenshotUploadZoneProps {
   entityHint: HermesEntityHint;
@@ -21,27 +29,79 @@ export function ScreenshotUploadZone({
   disabled,
 }: ScreenshotUploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const zoneRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [staged, setStaged] = useState<File[]>([]);
+  const [staged, setStaged] = useState<StagedScreenshot[]>([]);
 
-  const addFiles = useCallback((incoming: FileList | File[]) => {
-    const list = Array.from(incoming).filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic)$/i.test(f.name));
-    setStaged((prev) => {
-      const merged = [...prev, ...list].slice(0, SCREENSHOT_MAX_FILES);
-      return merged;
-    });
+  const revokeAll = useCallback((items: StagedScreenshot[]) => {
+    items.forEach((s) => URL.revokeObjectURL(s.previewUrl));
   }, []);
 
+  useEffect(() => () => revokeAll(staged), [staged, revokeAll]);
+
+  const addFiles = useCallback(
+    (incoming: FileList | File[]) => {
+      const list = Array.from(incoming).filter(
+        (f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic)$/i.test(f.name),
+      );
+      setStaged((prev) => {
+        const room = SCREENSHOT_MAX_FILES - prev.length;
+        const next = list.slice(0, room).map((file) => {
+          const bank = detectBankFromFilename(file.name);
+          return {
+            file,
+            previewUrl: URL.createObjectURL(file),
+            bank: bank.name,
+            bankAccent: bank.accent,
+          };
+        });
+        return [...prev, ...next];
+      });
+    },
+    [],
+  );
+
   const removeStaged = (index: number) => {
-    setStaged((prev) => prev.filter((_, i) => i !== index));
+    setStaged((prev) => {
+      const item = prev[index];
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const clearStaged = () => {
+    revokeAll(staged);
+    setStaged([]);
   };
 
   const submit = () => {
-    if (staged.length > 0) onUpload(staged);
+    if (staged.length > 0) onUpload(staged.map((s) => s.file));
   };
 
+  useEffect(() => {
+    const el = zoneRef.current;
+    if (!el) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length) {
+        e.preventDefault();
+        addFiles(files);
+      }
+    };
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+  }, [addFiles]);
+
   const entityOptions: { id: HermesEntityHint; label: string; accent: string; sub: string }[] = [
-    { id: "auto", label: "Auto-detect", accent: "#a78bfa", sub: "Hermes picks Personal vs Avaken" },
+    { id: "auto", label: "Auto-detect", accent: "#a78bfa", sub: "Recommended · Hermes picks Personal vs Avaken" },
     ...ENTITIES.filter((e) => e.id !== "consolidated").map((e) => ({
       id: e.id as HermesEntityHint,
       label: e.label,
@@ -51,8 +111,14 @@ export function ScreenshotUploadZone({
   ];
 
   return (
-    <div className="space-y-5">
-      {/* Entity selector */}
+    <div ref={zoneRef} className="space-y-5 outline-none" tabIndex={0}>
+      <div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3">
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">Daily workflow:</span> drop every banking screenshot
+          from today in one go — Hermes extracts all transactions in a single pass.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {entityOptions.map((opt) => (
           <button
@@ -70,7 +136,10 @@ export function ScreenshotUploadZone({
             <div className="flex items-center gap-2">
               <span
                 className="size-2 rounded-full"
-                style={{ background: opt.accent, boxShadow: entityHint === opt.id ? `0 0 8px ${opt.accent}` : undefined }}
+                style={{
+                  background: opt.accent,
+                  boxShadow: entityHint === opt.id ? `0 0 8px ${opt.accent}` : undefined,
+                }}
               />
               <span className="text-sm font-medium">{opt.label}</span>
             </div>
@@ -79,28 +148,29 @@ export function ScreenshotUploadZone({
         ))}
       </div>
 
-      {/* Drop zone */}
       <div
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && !disabled && inputRef.current?.click()}
         onDragEnter={(e) => {
           e.preventDefault();
           setDragging(true);
         }}
         onDragOver={(e) => e.preventDefault()}
-        onDragLeave={() => setDragging(false)}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+        }}
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
           if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
         }}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => !disabled && inputRef.current?.click()}
         className={cn(
-          "group relative cursor-pointer overflow-hidden rounded-2xl border-2 border-dashed p-10 transition-all",
+          "group relative flex min-h-[280px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed px-6 py-14 transition-all sm:min-h-[320px]",
           dragging
-            ? "border-primary bg-primary/[0.06]"
-            : "border-border-strong bg-card/40 hover:border-primary/40 hover:bg-primary/[0.03]",
+            ? "border-primary bg-primary/[0.08] scale-[1.01]"
+            : "border-border-strong bg-card/40 hover:border-primary/50 hover:bg-primary/[0.04]",
           disabled && "pointer-events-none opacity-50",
         )}
       >
@@ -116,70 +186,108 @@ export function ScreenshotUploadZone({
             e.target.value = "";
           }}
         />
-        <div className="flex flex-col items-center text-center">
-          <div className="mb-4 flex size-14 items-center justify-center rounded-2xl border border-border-strong bg-elevated/80 transition-transform group-hover:scale-105">
-            <Upload className="size-6 text-primary" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(16,185,129,0.06),transparent_55%)]" />
+        <div className="relative flex max-w-xl flex-col items-center text-center">
+          <div className="mb-5 flex size-16 items-center justify-center rounded-2xl border border-border-strong bg-elevated/80 shadow-lg transition-transform group-hover:scale-105">
+            <Upload className="size-7 text-primary" />
           </div>
-          <p className="text-base font-semibold">Drop screenshots here</p>
-          <p className="mt-1 text-sm text-muted-foreground">or click to browse · up to {SCREENSHOT_MAX_FILES} images</p>
-          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-subtle">
-            <Shield className="size-3 text-primary/80" />
-            Bank apps, Stripe, TikTok Shop, receipts — JPEG, PNG, WebP, HEIC
+          <p className="text-lg font-semibold leading-snug sm:text-xl">
+            Drop all your banking screenshots here
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Starling, RBS, Barclays, Amex, Apple Pay, Tide, and more — or click to browse
+          </p>
+          <p className="mt-4 text-xs text-subtle">
+            Up to {SCREENSHOT_MAX_FILES} images · paste from clipboard (⌘V) · JPEG, PNG, WebP, HEIC
+          </p>
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Shield className="size-3.5 text-primary/80" />
+            Processed on your VPS · never stored on Avaken
           </p>
         </div>
       </div>
 
-      {/* Staged thumbnails */}
       {staged.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {staged.map((file, i) => (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">
+              {staged.length} of {SCREENSHOT_MAX_FILES} screenshots ready
+            </p>
+            <button
+              type="button"
+              onClick={clearStaged}
+              disabled={disabled}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Clear all
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+            {staged.map((item, i) => (
               <div
-                key={`${file.name}-${i}`}
-                className="flex items-center gap-2 rounded-lg border border-border/80 bg-surface/80 py-1.5 pl-2 pr-1 text-xs"
+                key={`${item.file.name}-${i}`}
+                className="group relative overflow-hidden rounded-lg border border-border/80 bg-surface/60"
               >
-                <ImagePlus className="size-3.5 text-primary" />
-                <span className="max-w-[140px] truncate">{file.name}</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.previewUrl}
+                  alt={item.file.name}
+                  className="aspect-[4/3] w-full object-cover object-top"
+                />
+                <span
+                  className="absolute bottom-1 left-1 rounded px-1.5 py-0.5 text-[9px] font-semibold backdrop-blur-md"
+                  style={{
+                    background: "rgba(7,8,11,0.75)",
+                    color: item.bankAccent,
+                  }}
+                >
+                  {item.bank}
+                </span>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeStaged(i);
                   }}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-white/[0.06] hover:text-foreground"
+                  className="absolute right-1 top-1 rounded-md bg-background/80 p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
                 >
                   <X className="size-3.5" />
                 </button>
               </div>
             ))}
+            {staged.length < SCREENSHOT_MAX_FILES && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => inputRef.current?.click()}
+                className="flex aspect-[4/3] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong text-subtle hover:border-primary/40 hover:text-muted-foreground"
+              >
+                <ImagePlus className="size-5" />
+                <span className="text-[10px]">Add more</span>
+              </button>
+            )}
           </div>
+
           <button
             type="button"
             disabled={disabled}
             onClick={submit}
             className={cn(
-              "flex w-full items-center justify-center gap-2 rounded-xl py-4 text-base font-semibold transition-all",
+              "flex w-full items-center justify-center gap-2 rounded-2xl py-5 text-lg font-semibold transition-all",
               "bg-primary text-primary-foreground",
               "shadow-[0_0_0_1px_rgba(16,185,129,0.4),0_12px_40px_-12px_rgba(16,185,129,0.55)]",
-              "hover:bg-emerald hover:shadow-[0_0_0_1px_rgba(52,211,153,0.5),0_16px_48px_-12px_rgba(16,185,129,0.65)]",
+              "hover:bg-emerald",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
           >
-            <SparklesIcon />
-            {disabled ? "Sending to Hermes…" : "Analyse with Hermes"}
+            <Sparkles className="size-5" />
+            {disabled
+              ? "Hermes is analysing…"
+              : `Analyse ${staged.length} screenshot${staged.length === 1 ? "" : "s"}`}
           </button>
         </div>
       )}
     </div>
-  );
-}
-
-function SparklesIcon() {
-  return (
-    <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 3l1.2 4.2L17 8l-3.8 1.2L12 14l-1.2-4.8L7 8l3.8-.8L12 3z" />
-      <path d="M5 16l.6 2.2L8 19l-2.2.7L5 22l-.6-2.3L2 19l2.2-.5L5 16z" />
-      <path d="M19 14l.5 1.8L21 17l-1.8.6L19 20l-.5-1.9L17 17l1.8-.4L19 14z" />
-    </svg>
   );
 }

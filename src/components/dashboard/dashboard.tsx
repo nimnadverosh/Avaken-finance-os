@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Download, FileBarChart2 } from "lucide-react";
+import { ArrowUpRight, Camera, Download, FileBarChart2 } from "lucide-react";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "./kpi-card";
@@ -90,6 +91,13 @@ export function Dashboard() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/import/screenshots"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_0_0_1px_rgba(16,185,129,0.4),0_8px_24px_-8px_rgba(16,185,129,0.5)] transition-all hover:bg-emerald"
+            >
+              <Camera className="size-3.5" />
+              Import screenshots
+            </Link>
             <PeriodToggle value={period} onChange={setPeriod} />
             <Button variant="outline" size="sm">
               <Download className="size-3.5" />
@@ -101,6 +109,8 @@ export function Dashboard() {
             </Button>
           </div>
         </div>
+
+        <ScreenshotImportCta />
 
         {/* ---------- KPI grid ---------- */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -119,8 +129,6 @@ export function Dashboard() {
           <PersonalSummaryCards />
         </section>
       )}
-
-      <ScreenshotImportCta />
 
       {/* ---------- Reserves (Avaken / Consolidated) ---------- */}
       {reserves.length > 0 && (

@@ -4,8 +4,14 @@ import {
   resolveTransactionEntity,
   type ResolvedEntity,
 } from "@/lib/import/entity-resolution";
-import { parseAccountBalancesFromHermes } from "./parse-balances";
-import type { HermesAnalyzeResponse, HermesEntityHint, HermesExtractedTransaction } from "./types";
+import { filterBalanceWarnings, parseAccountBalancesFromHermes } from "./parse-balances";
+import { detectBankFromText } from "@/lib/screenshots/detect-bank";
+import type {
+  HermesAnalyzeResponse,
+  HermesEntityHint,
+  HermesExtractedTransaction,
+  HermesScreenshotSource,
+} from "./types";
 import type { TxnType } from "@/lib/data/types";
 
 const TXN_TYPES = new Set<TxnType>(["income", "expense", "payout", "transfer", "vat", "tax"]);
@@ -106,6 +112,18 @@ function mapRow(
     rowContext,
   );
 
+  const bankRaw = pickString(obj, [
+    "bank",
+    "institution",
+    "source_bank",
+    "sourceBank",
+    "provider",
+    "app",
+  ]);
+  const sourceBank = detectBankFromText(
+    bankRaw ?? rowContext,
+  ).name;
+
   return {
     id:
       pickString(obj, ["id", "transaction_id", "txn_id"]) ??
@@ -125,7 +143,82 @@ function mapRow(
         : typeof obj.image_index === "number"
           ? obj.image_index
           : undefined,
+    sourceBank: sourceBank !== "Bank app" ? sourceBank : undefined,
   };
+}
+
+function extractScreenshotSources(
+  payload: unknown,
+  transactions: HermesExtractedTransaction[],
+): HermesScreenshotSource[] {
+  const root = asRecord(payload);
+  const candidates: unknown[] = [];
+
+  if (root) {
+    if (Array.isArray(root.screenshots)) candidates.push(...root.screenshots);
+    if (Array.isArray(root.sources)) candidates.push(...root.sources);
+    if (Array.isArray(root.images)) candidates.push(...root.images);
+    const data = asRecord(root.data);
+    if (data && Array.isArray(data.screenshots)) candidates.push(...data.screenshots);
+  }
+
+  if (candidates.length > 0) {
+    return candidates.map((item, index) => {
+      const obj = asRecord(item) ?? {};
+      const bankRaw = pickString(obj, [
+        "bank",
+        "institution",
+        "detected_bank",
+        "source",
+        "provider",
+        "app",
+        "name",
+      ]);
+      const detected = detectBankFromText(bankRaw ?? "");
+      const idx =
+        typeof obj.index === "number"
+          ? obj.index
+          : typeof obj.image_index === "number"
+            ? obj.image_index
+            : index;
+      return {
+        index: idx,
+        bank: bankRaw && detected.name !== "Bank app" ? detected.name : detected.name,
+        bankId: pickString(obj, ["bank_id", "bankId"]) ?? detected.id,
+        fileName: pickString(obj, ["file_name", "fileName", "filename"]),
+        transactionCount:
+          pickNumber(obj, ["transaction_count", "transactionCount", "count"]) ??
+          transactions.filter((t) => (t.sourceImageIndex ?? 0) === idx).length,
+        confidence: pickNumber(obj, ["confidence", "score"]),
+      };
+    });
+  }
+
+  const byIndex = new Map<number, HermesExtractedTransaction[]>();
+  for (const t of transactions) {
+    const i = t.sourceImageIndex ?? 0;
+    const list = byIndex.get(i) ?? [];
+    list.push(t);
+    byIndex.set(i, list);
+  }
+
+  return [...byIndex.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([index, txns]) => {
+      const bankCounts = new Map<string, number>();
+      for (const t of txns) {
+        const b = t.sourceBank ?? "Bank app";
+        bankCounts.set(b, (bankCounts.get(b) ?? 0) + 1);
+      }
+      const bank = [...bankCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Bank app";
+      const detected = detectBankFromText(bank);
+      return {
+        index,
+        bank,
+        bankId: detected.id,
+        transactionCount: txns.length,
+      };
+    });
 }
 
 function extractErrorMessage(payload: unknown): string | null {
@@ -238,6 +331,8 @@ export function parseHermesResponse(
     batchInstitutionContext,
   );
 
+  const screenshotSources = extractScreenshotSources(payload, transactions);
+
   return {
     ok: true,
     data: {
@@ -246,8 +341,9 @@ export function parseHermesResponse(
       entity,
       confidence,
       transactions,
+      screenshotSources: screenshotSources.length > 0 ? screenshotSources : undefined,
       accountBalances: accountBalances.length > 0 ? accountBalances : undefined,
-      warnings,
+      warnings: filterBalanceWarnings(warnings, accountBalances.length > 0),
       processedAt:
         pickString(root, ["processedAt", "processed_at", "timestamp"]) ??
         new Date().toISOString(),

@@ -1,4 +1,6 @@
-import type { HermesAnalyzeResponse, HermesEntityHint } from "./types";
+import type { HermesAnalyzeResponse, HermesEntityHint, HermesScreenshotSource } from "./types";
+
+const DEMO_BANKS = ["Starling", "RBS", "Barclays", "Amex", "Apple Pay"] as const;
 
 const DEMO_POOL = [
   {
@@ -55,7 +57,18 @@ export function mockHermesAnalyze(
   entityHint: HermesEntityHint,
 ): HermesAnalyzeResponse {
   const batchId = crypto.randomUUID();
-  const count = Math.min(Math.max(imageCount, 1), 5);
+  const count = Math.max(imageCount, 1);
+  const screenshotSources: HermesScreenshotSource[] = Array.from(
+    { length: imageCount },
+    (_, i) => ({
+      index: i,
+      bank: DEMO_BANKS[i % DEMO_BANKS.length],
+      bankId: DEMO_BANKS[i % DEMO_BANKS.length].toLowerCase().replace(/\s+/g, "-"),
+      transactionCount: i < count ? 1 : 0,
+      confidence: 0.88,
+    }),
+  );
+
   const transactions = Array.from({ length: count }, (_, i) => {
     const base = DEMO_POOL[i % DEMO_POOL.length];
     const entity = entityHint === "auto" ? base.entity : pickEntity(entityHint, i);
@@ -73,8 +86,15 @@ export function mockHermesAnalyze(
       vat: entity === "avaken" && base.amount < 0 ? Math.round((base.amount / 1.2) * 0.2 * 100) / 100 : 0,
       confidence: 0.82 + (i % 3) * 0.05,
       sourceImageIndex: i % imageCount,
+      sourceBank: DEMO_BANKS[i % DEMO_BANKS.length],
     };
   });
+
+  for (const src of screenshotSources) {
+    src.transactionCount = transactions.filter(
+      (t) => (t.sourceImageIndex ?? 0) === src.index,
+    ).length;
+  }
 
   const entities = new Set(transactions.map((t) => t.entity));
   const resolvedEntity =
@@ -86,6 +106,7 @@ export function mockHermesAnalyze(
     entity: resolvedEntity,
     confidence: 0.87,
     transactions,
+    screenshotSources,
     warnings: [
       "Demo mode: connect HERMES_AGENT_URL on your VPS for live vision extraction.",
     ],

@@ -19,10 +19,12 @@ export function HermesLoadingState({ imageCount }: { imageCount: number }) {
             <Sparkles className="size-7 text-primary animate-pulse" />
           </span>
         </div>
-        <h3 className="text-lg font-semibold tracking-tight">Hermes is analysing your screenshots…</h3>
+        <h3 className="text-lg font-semibold tracking-tight">
+          Reading {imageCount} screenshot{imageCount === 1 ? "" : "s"}…
+        </h3>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          {imageCount} image{imageCount === 1 ? "" : "s"} sent securely to your private VPS. Raw files are
-          deleted immediately after extraction — nothing is stored on Avaken servers.
+          Hermes is extracting every transaction and detecting each bank. Usually takes a few
+          seconds — images are deleted right after analysis.
         </p>
         <div className="mt-6 flex items-center gap-2 rounded-full border border-border/80 bg-surface/80 px-4 py-2 text-xs text-muted-foreground">
           <Shield className="size-3.5 text-primary" />

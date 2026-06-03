@@ -1,4 +1,4 @@
-export const SCREENSHOT_MAX_FILES = 10;
+export const SCREENSHOT_MAX_FILES = 15;
 export const SCREENSHOT_MAX_BYTES = 8 * 1024 * 1024; // 8 MB per image
 
 const ALLOWED_MIME = new Set([

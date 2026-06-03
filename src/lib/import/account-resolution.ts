@@ -117,7 +117,11 @@ export function inferBalanceBucket(
     type.includes("current") ||
     type.includes("saving") ||
     type.includes("bank") ||
-    type.includes("debit")
+    type.includes("debit") ||
+    type.includes("main balance") ||
+    type.includes("spending space") ||
+    type.includes("total balance") ||
+    type.includes("total available")
   ) {
     return "bank";
   }
