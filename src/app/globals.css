@@ -1,26 +1,174 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/*  Avaken Finance OS — Premium dark design system                     */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  /* Surfaces */
+  --color-background: #07080b;
+  --color-surface: #0c0e13;
+  --color-card: #0e1117;
+  --color-elevated: #141821;
+
+  /* Borders & lines */
+  --color-border: #1b1f2a;
+  --color-border-strong: #272c3a;
+
+  /* Text */
+  --color-foreground: #e9ecf2;
+  --color-muted: #161a22;
+  --color-muted-foreground: #8b909e;
+  --color-subtle: #5e636f;
+
+  /* Brand / accents */
+  --color-primary: #10b981;
+  --color-primary-foreground: #02160e;
+  --color-emerald: #34d399;
+  --color-positive: #22c55e;
+  --color-negative: #f43f5e;
+  --color-warning: #f59e0b;
+  --color-info: #38bdf8;
+  --color-violet: #a78bfa;
+
+  /* Entity accent colors */
+  --color-personal: #38bdf8;
+  --color-avaken: #10b981;
+  --color-consolidated: #a78bfa;
+
+  /* Radii */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  border-color: var(--color-border);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Ambient gradient backdrop */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 60rem at 78% -8%, rgba(16, 185, 129, 0.08), transparent 60%),
+    radial-gradient(48rem 48rem at 8% 4%, rgba(167, 139, 250, 0.06), transparent 55%),
+    radial-gradient(50rem 40rem at 50% 110%, rgba(56, 189, 248, 0.05), transparent 60%);
+}
+
+/* Glassmorphism utility */
+@utility glass {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.035) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@utility glass-strong {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Subtle inner card sheen */
+@utility card-sheen {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 45%),
+    var(--color-card);
+}
+
+/* Text gradient */
+@utility text-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #aeb4c2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #232838;
+  border-radius: 9999px;
+  border: 2px solid var(--color-background);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2f3548;
+}
+
+/* Number tabular alignment for finance figures */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
 }
