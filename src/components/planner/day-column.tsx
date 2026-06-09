@@ -1,42 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePlanner } from "@/lib/planner/store";
 import { useDrag } from "@/lib/planner/drag-context";
-import {
-  dayLabel,
-  daySubLabel,
-  formatDuration,
-  isTodayKey,
-  type DayKey,
-} from "@/lib/planner/dates";
+import { dayLabel, daySubLabel, isTodayKey, type DayKey } from "@/lib/planner/dates";
 import { TaskItem } from "./task-item";
 
-export function DayColumn({
-  dayKey,
-  onFocus,
-}: {
-  dayKey: DayKey;
-  onFocus: (id: string) => void;
-}) {
+export function DayColumn({ dayKey }: { dayKey: DayKey }) {
   const { tasksForDay, addTask, moveTask, reorderTask } = usePlanner();
   const { draggingId, endDrag } = useDrag();
   const [dropActive, setDropActive] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
 
   const tasks = tasksForDay(dayKey);
   const isToday = isTodayKey(dayKey);
-  const remaining = tasks.filter((t) => !t.done);
-  const totalMinutes = remaining.reduce((sum, t) => sum + t.duration, 0);
-  const doneCount = tasks.length - remaining.length;
 
   const handleColumnDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/plain");
-    if (id) moveTask(id, { day: dayKey });
+    if (id) moveTask(id, dayKey);
     setDropActive(false);
     endDrag();
   };
@@ -54,44 +37,21 @@ export function DayColumn({
     const trimmed = draft.trim();
     if (trimmed) addTask({ title: trimmed, day: dayKey });
     setDraft("");
-    setAdding(false);
   };
 
   return (
-    <div
-      className={cn(
-        "flex h-full min-w-0 flex-col rounded-2xl border bg-card/40 transition-colors",
-        isToday ? "border-primary/30" : "border-border/60",
-        dropActive && "border-primary/60 bg-primary/[0.03]",
-      )}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border/50 px-3 py-2.5">
-        <div className="flex items-baseline gap-1.5">
-          <span
-            className={cn(
-              "text-sm font-semibold tracking-tight",
-              isToday ? "text-primary" : "text-foreground",
-            )}
-          >
-            {dayLabel(dayKey)}
-          </span>
-          <span className="text-[11px] text-subtle">{daySubLabel(dayKey)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {totalMinutes > 0 && (
-            <span className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium tabular text-muted-foreground">
-              {formatDuration(totalMinutes)}
-            </span>
+    <div className="flex h-full min-w-0 flex-col">
+      {/* Header — just day name + date */}
+      <div className="flex items-baseline gap-2 px-2 pb-3">
+        <span
+          className={cn(
+            "text-[15px] font-semibold tracking-tight",
+            isToday ? "text-primary" : "text-foreground",
           )}
-          <button
-            onClick={() => setAdding(true)}
-            aria-label="Add task to this day"
-            className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-white/[0.06] hover:text-foreground"
-          >
-            <Plus className="size-4" />
-          </button>
-        </div>
+        >
+          {dayLabel(dayKey)}
+        </span>
+        <span className="text-xs text-subtle">{daySubLabel(dayKey)}</span>
       </div>
 
       {/* Tasks */}
@@ -106,58 +66,36 @@ export function DayColumn({
           if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropActive(false);
         }}
         onDrop={handleColumnDrop}
-        className="flex-1 space-y-1.5 overflow-y-auto p-2"
+        className={cn(
+          "flex-1 space-y-0.5 overflow-y-auto rounded-xl py-1 transition-colors",
+          dropActive && "bg-primary/[0.03] ring-1 ring-inset ring-primary/20",
+        )}
       >
         {tasks.map((t) => (
           <div key={t.id} onDrop={(e) => handleItemDrop(e, t.id)}>
-            <TaskItem task={t} variant="day" onFocus={onFocus} />
+            <TaskItem task={t} />
           </div>
         ))}
 
-        {adding && (
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={submitDraft}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitDraft();
-              if (e.key === "Escape") {
-                setDraft("");
-                setAdding(false);
-              }
-            }}
-            placeholder="Task title…"
-            className="w-full rounded-xl border border-border-strong bg-white/[0.04] px-2.5 py-2 text-sm text-foreground outline-none placeholder:text-subtle"
-          />
-        )}
-
-        {tasks.length === 0 && !adding && (
-          <button
-            onClick={() => setAdding(true)}
-            className="flex min-h-20 w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border/60 text-center text-[11px] text-subtle transition-colors hover:border-border-strong hover:text-muted-foreground"
-          >
-            <Plus className="size-4" />
-            Add or drop a task
-          </button>
-        )}
+        {/* Inline add — quiet until focused */}
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={submitDraft}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              submitDraft();
+              (e.target as HTMLInputElement).focus();
+            }
+            if (e.key === "Escape") {
+              setDraft("");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          placeholder="+ Add a task"
+          className="w-full rounded-xl bg-transparent px-2 py-2 text-[15px] text-foreground outline-none transition-colors placeholder:text-subtle hover:bg-white/[0.02] focus:bg-white/[0.03]"
+        />
       </div>
-
-      {/* Footer progress */}
-      {tasks.length > 0 && (
-        <div className="border-t border-border/50 px-3 py-2">
-          <div className="flex items-center justify-between text-[10px] text-subtle">
-            <span>{doneCount}/{tasks.length} done</span>
-            <span className="tabular">{Math.round((doneCount / tasks.length) * 100)}%</span>
-          </div>
-          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-primary to-emerald transition-all duration-500"
-              style={{ width: `${(doneCount / tasks.length) * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,16 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  CalendarDays,
-  CornerDownLeft,
-  Inbox,
-  Link2,
-  Sparkles,
-  Sun,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { usePlanner, FINANCE_SUGGESTIONS } from "@/lib/planner/store";
+import { CalendarDays, CornerDownLeft, Inbox, Sun } from "lucide-react";
+import { usePlanner } from "@/lib/planner/store";
 import { addDayKey, todayKey, formatDuration } from "@/lib/planner/dates";
 
 /** Parses a trailing duration token ("30m", "1h", "90") out of the raw text. */
@@ -46,46 +38,19 @@ export function QuickAdd({ open, onClose }: { open: boolean; onClose: () => void
   const parsed = useMemo(() => parseDuration(value.trim()), [value]);
   const cleanTitle = parsed.title || value.trim();
 
-  const financeMatches = useMemo(() => {
-    const q = value.trim().toLowerCase();
-    if (!q) return FINANCE_SUGGESTIONS.slice(0, 3);
-    return FINANCE_SUGGESTIONS.filter((f) => f.label.toLowerCase().includes(q)).slice(0, 4);
-  }, [value]);
-
   if (!open) return null;
 
   const add = (day: string | null) => {
     if (!cleanTitle) return;
-    addTask({
-      title: cleanTitle,
-      day,
-      duration: parsed.duration ?? 30,
-    });
-    onClose();
-  };
-
-  const addFinance = (f: (typeof FINANCE_SUGGESTIONS)[number]) => {
-    addTask({
-      title: f.label,
-      day: todayKey(),
-      duration: 15,
-      tag: "finance",
-      financeLink: { label: f.label, href: f.href },
-    });
+    addTask({ title: cleanTitle, day, duration: parsed.duration });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[14vh]">
-      <button
-        aria-label="Close"
-        onClick={onClose}
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
-      />
-      <div className="glass-strong relative w-full max-w-lg overflow-hidden rounded-2xl shadow-[0_32px_64px_-24px_rgba(0,0,0,0.8)]">
-        {/* Input */}
-        <div className="flex items-center gap-3 border-b border-border/60 px-4">
-          <Sparkles className="size-4 shrink-0 text-primary" />
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[16vh]">
+      <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
+      <div className="glass-strong relative w-full max-w-md overflow-hidden rounded-2xl shadow-[0_32px_64px_-24px_rgba(0,0,0,0.8)]">
+        <div className="flex items-center gap-3 border-b border-border/50 px-4">
           <input
             ref={inputRef}
             value={value}
@@ -99,7 +64,7 @@ export function QuickAdd({ open, onClose }: { open: boolean; onClose: () => void
                 add(todayKey());
               }
             }}
-            placeholder="Quick add a task…  (try “Review Tide 30m”)"
+            placeholder="Add a task…"
             className="h-14 w-full bg-transparent text-[15px] text-foreground outline-none placeholder:text-subtle"
           />
           {parsed.duration && (
@@ -109,43 +74,13 @@ export function QuickAdd({ open, onClose }: { open: boolean; onClose: () => void
           )}
         </div>
 
-        {/* Destinations */}
         {cleanTitle && (
-          <div className="border-b border-border/60 p-2">
-            <Row
-              icon={<Sun className="size-4 text-warning" />}
-              label={`Add “${cleanTitle}” to Today`}
-              hint="↵"
-              onClick={() => add(todayKey())}
-            />
-            <Row
-              icon={<CalendarDays className="size-4 text-info" />}
-              label="Add to Tomorrow"
-              onClick={() => add(addDayKey(todayKey(), 1))}
-            />
-            <Row
-              icon={<Inbox className="size-4 text-violet" />}
-              label="Add to Brain Dump"
-              hint="⌘↵"
-              onClick={() => add(null)}
-            />
+          <div className="p-2">
+            <Row icon={<Sun className="size-4 text-warning" />} label="Today" hint="↵" onClick={() => add(todayKey())} />
+            <Row icon={<CalendarDays className="size-4 text-info" />} label="Tomorrow" onClick={() => add(addDayKey(todayKey(), 1))} />
+            <Row icon={<Inbox className="size-4 text-muted-foreground" />} label="Brain Dump" hint="⌘↵" onClick={() => add(null)} />
           </div>
         )}
-
-        {/* Finance shortcuts */}
-        <div className="p-2">
-          <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-subtle">
-            Link to Finance
-          </div>
-          {financeMatches.map((f) => (
-            <Row
-              key={f.href}
-              icon={<Link2 className="size-4 text-primary" />}
-              label={f.label}
-              onClick={() => addFinance(f)}
-            />
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -165,17 +100,12 @@ function Row({
   return (
     <button
       onClick={onClick}
-      className={cn(
-        "group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
-        "hover:bg-white/[0.05]",
-      )}
+      className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-white/[0.05]"
     >
       {icon}
       <span className="flex-1 truncate text-sm text-foreground">{label}</span>
       {hint ? (
-        <span className="rounded border border-border-strong bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-subtle">
-          {hint}
-        </span>
+        <span className="rounded border border-border-strong bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-subtle">{hint}</span>
       ) : (
         <CornerDownLeft className="size-3.5 text-subtle opacity-0 transition-opacity group-hover:opacity-100" />
       )}

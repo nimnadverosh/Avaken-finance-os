@@ -10,48 +10,12 @@ import {
   useState,
 } from "react";
 import { addDayKey, todayKey } from "./dates";
-import type {
-  EnergyLevel,
-  NewTaskInput,
-  PlannerState,
-  PlannerTask,
-  Recurrence,
-} from "./types";
+import type { NewTaskInput, PlannerState, PlannerTask } from "./types";
 
-const STORAGE_KEY = "avaken.planner.v1";
+const STORAGE_KEY = "avaken.planner.v2";
 
 /* ------------------------------------------------------------------ */
-/*  Finance-linked task suggestions — bridges the planner to Finance OS */
-/* ------------------------------------------------------------------ */
-
-export const FINANCE_SUGGESTIONS = [
-  { label: "Review Tide balance", href: "/dashboard", tag: "finance" as const },
-  { label: "Reconcile transactions", href: "/transactions", tag: "finance" as const },
-  { label: "Check VAT position", href: "/vat", tag: "finance" as const },
-  { label: "Review affiliate payouts", href: "/affiliates", tag: "finance" as const },
-  { label: "Cancel unused subscriptions", href: "/subscriptions", tag: "finance" as const },
-  { label: "Rebalance portfolio", href: "/portfolio", tag: "finance" as const },
-  { label: "Read AI insights", href: "/insights", tag: "finance" as const },
-];
-
-/** One-tap routines that ADHD-friendly planners benefit from re-adding daily. */
-export const ROUTINE_SUGGESTIONS: Array<{
-  title: string;
-  duration: number;
-  recurrence: Recurrence;
-  energy: EnergyLevel;
-  tag: PlannerTask["tag"];
-}> = [
-  { title: "Morning brain dump + plan", duration: 15, recurrence: "daily", energy: "medium", tag: "admin" },
-  { title: "Deep work block", duration: 90, recurrence: "weekdays", energy: "high", tag: "deep" },
-  { title: "Inbox zero", duration: 20, recurrence: "weekdays", energy: "low", tag: "admin" },
-  { title: "Move your body", duration: 30, recurrence: "daily", energy: "medium", tag: "health" },
-  { title: "Weekly money review", duration: 30, recurrence: "weekly", energy: "medium", tag: "finance" },
-  { title: "Shutdown + tomorrow's top 3", duration: 10, recurrence: "daily", energy: "low", tag: "admin" },
-];
-
-/* ------------------------------------------------------------------ */
-/*  Seed data — shown on first load so the planner never feels empty    */
+/*  Seed — a calm starter so the planner never feels empty             */
 /* ------------------------------------------------------------------ */
 
 function buildSeed(): PlannerState {
@@ -59,134 +23,37 @@ function buildSeed(): PlannerState {
   const tomorrow = addDayKey(today, 1);
   let order = 0;
   const t = (
-    partial: Omit<PlannerTask, "id" | "order" | "createdAt" | "completedAt"> &
-      Partial<Pick<PlannerTask, "completedAt">>,
+    title: string,
+    day: string | null,
+    opts: { done?: boolean; duration?: number | null } = {},
   ): PlannerTask => ({
     id: crypto.randomUUID(),
+    title,
+    done: opts.done ?? false,
+    duration: opts.duration ?? null,
+    day,
     order: order++,
     createdAt: Date.now() - order * 1000,
-    completedAt: partial.done ? Date.now() - 3_600_000 : null,
-    ...partial,
+    completedAt: opts.done ? Date.now() - 3_600_000 : null,
   });
 
   return {
-    pomodoroCount: 0,
-    energyByDay: { [today]: "high" },
     tasks: [
-      t({
-        title: "Review Tide balance",
-        notes: "Check Avaken Ltd float before payday",
-        done: false,
-        duration: 15,
-        day: today,
-        startMinutes: 9 * 60,
-        energy: "medium",
-        recurrence: "none",
-        tag: "finance",
-        financeLink: { label: "Review Tide balance", href: "/dashboard" },
-      }),
-      t({
-        title: "Deep work: affiliate dashboard",
-        done: false,
-        duration: 90,
-        day: today,
-        startMinutes: 10 * 60,
-        energy: "high",
-        recurrence: "none",
-        tag: "deep",
-        financeLink: null,
-      }),
-      t({
-        title: "Reply to TikTok Shop emails",
-        done: true,
-        duration: 30,
-        day: today,
-        startMinutes: null,
-        energy: "low",
-        recurrence: "none",
-        tag: "admin",
-        financeLink: null,
-      }),
-      t({
-        title: "Approve Q4 VAT figures",
-        done: false,
-        duration: 45,
-        day: tomorrow,
-        startMinutes: 11 * 60,
-        energy: "high",
-        recurrence: "none",
-        tag: "finance",
-        financeLink: { label: "Check VAT position", href: "/vat" },
-      }),
-      t({
-        title: "Gym",
-        done: false,
-        duration: 60,
-        day: tomorrow,
-        startMinutes: null,
-        energy: "medium",
-        recurrence: "none",
-        tag: "health",
-        financeLink: null,
-      }),
-      // Brain dump (inbox) items
-      t({
-        title: "Idea: automate monthly P&L export",
-        done: false,
-        duration: 30,
-        day: null,
-        startMinutes: null,
-        energy: null,
-        recurrence: "none",
-        tag: null,
-        financeLink: null,
-      }),
-      t({
-        title: "Call accountant re: dividends",
-        done: false,
-        duration: 20,
-        day: null,
-        startMinutes: null,
-        energy: null,
-        recurrence: "none",
-        tag: "finance",
-        financeLink: null,
-      }),
-      t({
-        title: "Book flights for March",
-        done: false,
-        duration: 20,
-        day: null,
-        startMinutes: null,
-        energy: null,
-        recurrence: "none",
-        tag: "personal",
-        financeLink: null,
-      }),
+      t("Review Tide balance", today, { duration: 15 }),
+      t("Deep work block", today, { duration: 90 }),
+      t("Reply to TikTok Shop emails", today, { done: true }),
+      t("Approve Q4 VAT figures", tomorrow, { duration: 45 }),
+      t("Gym", tomorrow),
+      // Brain Dump
+      t("Call accountant re: dividends", null),
+      t("Book flights for March", null),
+      t("Idea: automate monthly P&L export", null),
     ],
   };
 }
 
 /* ------------------------------------------------------------------ */
-/*  Recurrence helpers                                                  */
-/* ------------------------------------------------------------------ */
-
-function nextRecurrenceDay(day: string, recurrence: Recurrence): string | null {
-  if (recurrence === "none") return null;
-  if (recurrence === "weekly") return addDayKey(day, 7);
-  if (recurrence === "daily") return addDayKey(day, 1);
-  // weekdays: skip Sat/Sun
-  let next = addDayKey(day, 1);
-  for (let i = 0; i < 7; i++) {
-    const dow = new Date(next).getDay();
-    if (dow !== 0 && dow !== 6) return next;
-    next = addDayKey(next, 1);
-  }
-  return next;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Context                                                             */
+/*  Context                                                            */
 /* ------------------------------------------------------------------ */
 
 interface PlannerContextValue extends PlannerState {
@@ -195,31 +62,19 @@ interface PlannerContextValue extends PlannerState {
   updateTask: (id: string, patch: Partial<PlannerTask>) => void;
   toggleDone: (id: string) => void;
   deleteTask: (id: string) => void;
-  /** Move a task to a day (or inbox when day is null) and optionally a timebox slot. */
-  moveTask: (
-    id: string,
-    target: { day: string | null; startMinutes?: number | null; order?: number },
-  ) => void;
+  moveTask: (id: string, day: string | null) => void;
   reorderTask: (id: string, day: string | null, beforeId: string | null) => void;
-  setEnergy: (day: string, level: EnergyLevel) => void;
-  incrementPomodoro: () => void;
   tasksForDay: (day: string) => PlannerTask[];
   inboxTasks: () => PlannerTask[];
-  scheduledForDay: (day: string) => PlannerTask[];
 }
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
 
 export function PlannerProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<PlannerState>({
-    tasks: [],
-    energyByDay: {},
-    pomodoroCount: 0,
-  });
+  const [state, setState] = useState<PlannerState>({ tasks: [] });
   const [hydrated, setHydrated] = useState(false);
   const orderCounter = useRef(0);
 
-  // Hydrate from localStorage (or seed) after mount to avoid SSR mismatch.
   useEffect(() => {
     let loaded: PlannerState | null = null;
     try {
@@ -234,13 +89,12 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     setHydrated(true);
   }, []);
 
-  // Persist on every change once hydrated.
   useEffect(() => {
     if (!hydrated) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      /* storage full / unavailable — non-fatal */
+      /* non-fatal */
     }
   }, [state, hydrated]);
 
@@ -252,20 +106,14 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
       const task: PlannerTask = {
         id,
         title: input.title.trim(),
-        notes: input.notes,
         done: false,
-        duration: input.duration ?? 30,
+        duration: input.duration ?? null,
         day: input.day ?? null,
-        startMinutes: input.startMinutes ?? null,
-        energy: input.energy ?? null,
-        recurrence: input.recurrence ?? "none",
-        tag: input.tag ?? null,
-        financeLink: input.financeLink ?? null,
         order: nextOrder(),
         createdAt: Date.now(),
         completedAt: null,
       };
-      setState((s) => ({ ...s, tasks: [...s.tasks, task] }));
+      setState((s) => ({ tasks: [...s.tasks, task] }));
       return id;
     },
     [nextOrder],
@@ -273,72 +121,29 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
 
   const updateTask = useCallback((id: string, patch: Partial<PlannerTask>) => {
     setState((s) => ({
-      ...s,
       tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
     }));
   }, []);
 
-  const toggleDone = useCallback(
-    (id: string) => {
-      setState((s) => {
-        const task = s.tasks.find((t) => t.id === id);
-        if (!task) return s;
-        const nowDone = !task.done;
-        let tasks = s.tasks.map((t) =>
-          t.id === id
-            ? { ...t, done: nowDone, completedAt: nowDone ? Date.now() : null }
-            : t,
-        );
-        // Completing a recurring task spawns its next occurrence automatically.
-        if (nowDone && task.recurrence !== "none" && task.day) {
-          const next = nextRecurrenceDay(task.day, task.recurrence);
-          if (next) {
-            tasks = [
-              ...tasks,
-              {
-                ...task,
-                id: crypto.randomUUID(),
-                done: false,
-                completedAt: null,
-                day: next,
-                order: nextOrder(),
-                createdAt: Date.now(),
-              },
-            ];
-          }
-        }
-        return { ...s, tasks };
-      });
-    },
-    [nextOrder],
-  );
-
-  const deleteTask = useCallback((id: string) => {
-    setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }));
+  const toggleDone = useCallback((id: string) => {
+    setState((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.id === id
+          ? { ...t, done: !t.done, completedAt: !t.done ? Date.now() : null }
+          : t,
+      ),
+    }));
   }, []);
 
-  const moveTask = useCallback(
-    (
-      id: string,
-      target: { day: string | null; startMinutes?: number | null; order?: number },
-    ) => {
-      setState((s) => ({
-        ...s,
-        tasks: s.tasks.map((t) =>
-          t.id === id
-            ? {
-                ...t,
-                day: target.day,
-                startMinutes:
-                  target.startMinutes !== undefined ? target.startMinutes : t.startMinutes,
-                order: target.order ?? t.order,
-              }
-            : t,
-        ),
-      }));
-    },
-    [],
-  );
+  const deleteTask = useCallback((id: string) => {
+    setState((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+  }, []);
+
+  const moveTask = useCallback((id: string, day: string | null) => {
+    setState((s) => ({
+      tasks: s.tasks.map((t) => (t.id === id ? { ...t, day } : t)),
+    }));
+  }, []);
 
   const reorderTask = useCallback(
     (id: string, day: string | null, beforeId: string | null) => {
@@ -348,9 +153,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
         const container = s.tasks
           .filter((t) => t.day === day && t.id !== id)
           .sort((a, b) => a.order - b.order);
-        const idx = beforeId
-          ? container.findIndex((t) => t.id === beforeId)
-          : container.length;
+        const idx = beforeId ? container.findIndex((t) => t.id === beforeId) : container.length;
         const insertAt = idx === -1 ? container.length : idx;
         const reordered = [
           ...container.slice(0, insertAt),
@@ -359,11 +162,8 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
         ];
         const orderMap = new Map(reordered.map((t, i) => [t.id, i]));
         return {
-          ...s,
           tasks: s.tasks.map((t) =>
-            orderMap.has(t.id)
-              ? { ...t, day, order: orderMap.get(t.id)! }
-              : t,
+            orderMap.has(t.id) ? { ...t, day, order: orderMap.get(t.id)! } : t,
           ),
         };
       });
@@ -371,27 +171,11 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const setEnergy = useCallback((day: string, level: EnergyLevel) => {
-    setState((s) => ({ ...s, energyByDay: { ...s.energyByDay, [day]: level } }));
-  }, []);
-
-  const incrementPomodoro = useCallback(() => {
-    setState((s) => ({ ...s, pomodoroCount: s.pomodoroCount + 1 }));
-  }, []);
-
   const tasksForDay = useCallback(
     (day: string) =>
       state.tasks
         .filter((t) => t.day === day)
         .sort((a, b) => Number(a.done) - Number(b.done) || a.order - b.order),
-    [state.tasks],
-  );
-
-  const scheduledForDay = useCallback(
-    (day: string) =>
-      state.tasks
-        .filter((t) => t.day === day && t.startMinutes !== null)
-        .sort((a, b) => (a.startMinutes ?? 0) - (b.startMinutes ?? 0)),
     [state.tasks],
   );
 
@@ -413,11 +197,8 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
       deleteTask,
       moveTask,
       reorderTask,
-      setEnergy,
-      incrementPomodoro,
       tasksForDay,
       inboxTasks,
-      scheduledForDay,
     }),
     [
       state,
@@ -428,11 +209,8 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
       deleteTask,
       moveTask,
       reorderTask,
-      setEnergy,
-      incrementPomodoro,
       tasksForDay,
       inboxTasks,
-      scheduledForDay,
     ],
   );
 
