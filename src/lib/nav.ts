@@ -1,8 +1,6 @@
 import {
   ArrowLeftRight,
-  Camera,
   CreditCard,
-  FileJson,
   FileBarChart2,
   LayoutDashboard,
   Landmark,
@@ -23,9 +21,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Overview" },
-  { label: "Screenshot import", href: "/import/screenshots", icon: Camera, badge: "Daily", group: "Overview" },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight, group: "Overview" },
-  { label: "JSON import", href: "/import/json", icon: FileJson, group: "Overview" },
   { label: "Subscriptions", href: "/subscriptions", icon: CreditCard, badge: "19", group: "Overview" },
 
   { label: "Affiliates", href: "/affiliates", icon: Music2, group: "Avaken" },
@@ -39,3 +35,17 @@ export const navItems: NavItem[] = [
 ];
 
 export const navGroups = ["Overview", "Avaken", "Wealth", "Reporting"] as const;
+
+/** Advanced import tools — linked from Settings, not the main sidebar. */
+export const advancedImportLinks = [
+  {
+    label: "Screenshot import",
+    href: "/import/screenshots",
+    description: "Hermes vision extraction from banking screenshots",
+  },
+  {
+    label: "JSON import",
+    href: "/import/json",
+    description: "Paste or POST Hermes analyze JSON for bulk imports",
+  },
+] as const;

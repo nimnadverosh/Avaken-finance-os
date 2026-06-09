@@ -28,6 +28,8 @@ import {
 } from "./mock";
 import { getLedgerAccounts } from "./mock-account-balances";
 import { getLedgerTransactions } from "./mock-ledger";
+import { getDailyFinancialSnapshot } from "./daily-updates";
+import { getConsolidatedFinancialSummary } from "./personal-summary";
 import { corpTax, type CorpTaxBreakdown } from "@/lib/tax/uk-corp-tax";
 import { ukPersonalTax, type TaxBreakdown } from "@/lib/tax/uk-income-tax";
 
@@ -55,14 +57,42 @@ function inEntity<T extends { entity: "personal" | "avaken" }>(items: T[], entit
 
 /* ---- Balances ---- */
 export function cashBalance(entity: Entity): number {
+  const snapshot = getDailyFinancialSnapshot();
+  if (snapshot) {
+    if (entity === "personal") return snapshot.personalBankTotal;
+    if (entity === "avaken") {
+      const reserves = getLedgerAccounts()
+        .filter((a) => a.entity === "avaken" && a.id !== "tide")
+        .reduce((sum, a) => sum + a.balance, 0);
+      return snapshot.avakenTideBalance + reserves;
+    }
+    const reserves = getLedgerAccounts()
+      .filter((a) => a.entity === "avaken" && a.id !== "tide")
+      .reduce((sum, a) => sum + a.balance, 0);
+    return snapshot.personalBankTotal + snapshot.avakenTideBalance + reserves;
+  }
+
   return sum(
     inEntity(getLedgerAccounts(), entity)
-      .filter((a) => a.type !== "investment")
+      .filter((a) => a.type !== "investment" && a.type !== "credit")
       .map((a) => a.balance),
   );
 }
 
 export function netWorth(entity: Entity): number {
+  const snapshot = getDailyFinancialSnapshot();
+  if (snapshot) {
+    const etoro = getLedgerAccounts().find((a) => a.id === "etoro")?.balance ?? 0;
+    if (entity === "personal") return snapshot.netPosition + etoro;
+    if (entity === "avaken") {
+      const reserves = getLedgerAccounts()
+        .filter((a) => a.entity === "avaken" && a.id !== "tide")
+        .reduce((sum, a) => sum + a.balance, 0);
+      return snapshot.avakenTideBalance + reserves;
+    }
+    return getConsolidatedFinancialSummary().totalNetPosition + etoro;
+  }
+
   const latest = netWorthSeries[netWorthSeries.length - 1];
   if (entity === "personal") return latest.personal!;
   if (entity === "avaken") return latest.avaken!;
@@ -321,6 +351,7 @@ export function getKpis(entity: Entity): Kpi[] {
   const cash = cashBalance(entity);
   const nw = netWorth(entity);
   const subs = monthlySubscriptionSpend(entity);
+  const dailySnapshot = getDailyFinancialSnapshot();
 
   const revSpark = rev.slice(-7).map((p) => p.revenue!);
   const netSpark = rev.slice(-7).map((p) => p.net!);
@@ -358,7 +389,7 @@ export function getKpis(entity: Entity): Kpi[] {
       delta: 5.4,
       spark: nwSpark.map((v) => v * 0.4),
       accent: "#38bdf8",
-      sub: `${inEntity(getLedgerAccounts(), entity).length} accounts`,
+      sub: dailySnapshot ? "from morning update" : `${inEntity(getLedgerAccounts(), entity).length} accounts`,
     },
     {
       id: "networth",
@@ -368,7 +399,7 @@ export function getKpis(entity: Entity): Kpi[] {
       delta: 3.1,
       spark: nwSpark,
       accent: "#a78bfa",
-      sub: "total equity",
+      sub: dailySnapshot ? "includes daily balances" : "total equity",
     },
   ];
 

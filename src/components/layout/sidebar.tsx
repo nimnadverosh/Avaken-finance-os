@@ -37,7 +37,6 @@ export function Sidebar() {
                 .filter((i) => i.group === group)
                 .map((item) => {
                   const active = pathname === item.href || pathname.startsWith(item.href + "/");
-                  const isDailyImport = item.href === "/import/screenshots";
                   return (
                     <Link
                       key={item.href}
@@ -46,9 +45,7 @@ export function Sidebar() {
                         "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                         active
                           ? "bg-white/[0.06] text-foreground"
-                          : isDailyImport
-                            ? "text-foreground/90 hover:bg-primary/[0.06] hover:text-foreground"
-                            : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
+                          : "text-muted-foreground hover:bg-white/[0.03] hover:text-foreground",
                       )}
                     >
                       {active && (

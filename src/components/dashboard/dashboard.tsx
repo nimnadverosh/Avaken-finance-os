@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Camera, Download, FileBarChart2 } from "lucide-react";
-import Link from "next/link";
+import { ArrowUpRight, Download, FileBarChart2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "./kpi-card";
+import { MorningQuickUpdate } from "./morning-quick-update";
 import { PersonalSummaryCards } from "./personal-summary-cards";
 import { ReserveGauge } from "./reserve-gauge";
 import { AccountsStrip } from "./accounts-strip";
 import { AffiliatesLeaderboard } from "./affiliates-leaderboard";
 import { TransactionsFeed } from "./transactions-feed";
-import { ScreenshotImportCta } from "./screenshot-import-cta";
 import { InsightsPanel } from "./insights-panel";
 import { PeriodToggle, type Period } from "./period-toggle";
 import { SectionHeader } from "./section";
@@ -56,7 +55,7 @@ export function Dashboard() {
   const insights = getInsights(entity, 4);
 
   const showAffiliates = entity === "avaken" || entity === "consolidated";
-  const isPersonal = entity === "personal";
+  const showBalanceSummary = entity === "personal" || entity === "consolidated";
 
   const latestNetWorth =
     entity === "personal"
@@ -91,13 +90,6 @@ export function Dashboard() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/import/screenshots"
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_0_0_1px_rgba(16,185,129,0.4),0_8px_24px_-8px_rgba(16,185,129,0.5)] transition-all hover:bg-emerald"
-            >
-              <Camera className="size-3.5" />
-              Import screenshots
-            </Link>
             <PeriodToggle value={period} onChange={setPeriod} />
             <Button variant="outline" size="sm">
               <Download className="size-3.5" />
@@ -110,7 +102,7 @@ export function Dashboard() {
           </div>
         </div>
 
-        <ScreenshotImportCta />
+        <MorningQuickUpdate />
 
         {/* ---------- KPI grid ---------- */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -120,13 +112,13 @@ export function Dashboard() {
         </div>
       </section>
 
-      {isPersonal && (
+      {showBalanceSummary && (
         <section className="space-y-3">
           <SectionHeader
             title="Balances"
-            description="Synced from Hermes screenshot imports · bank cash vs credit card debt."
+            description="From your daily morning update · bank cash vs credit card debt."
           />
-          <PersonalSummaryCards />
+          <PersonalSummaryCards entity={entity} />
         </section>
       )}
 

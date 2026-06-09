@@ -98,6 +98,27 @@ export async function analyzeScreenshotsWithHermes(
       };
     }
 
+    if (payload && typeof payload === "object") {
+      const root = payload as Record<string, unknown>;
+      const balancesShape = Array.isArray(root.balances)
+        ? `balances[${root.balances.length}]: ${root.balances
+            .slice(0, 4)
+            .map((b) => {
+              const o = b as Record<string, unknown>;
+              const label = o.account_type ?? o.accountType ?? o.type ?? o.label ?? o.name ?? "?";
+              return `${String(label)}=${o.balance ?? o.amount ?? "?"}`;
+            })
+            .join(", ")}`
+        : "no balances[] array";
+      // eslint-disable-next-line no-console
+      console.log(
+        "[hermes] keys=%s | %s | transactions=%d",
+        Object.keys(root).join(","),
+        balancesShape,
+        Array.isArray(root.transactions) ? root.transactions.length : 0,
+      );
+    }
+
     const parsed = parseHermesResponse(payload, entityHint);
     if (!parsed.ok) {
       return {

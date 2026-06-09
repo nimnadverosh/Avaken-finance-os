@@ -1,10 +1,12 @@
 "use client";
 
-import { Bot, CreditCard, KeyRound, Plug, ShieldCheck, User } from "lucide-react";
+import Link from "next/link";
+import { Bot, Camera, CreditCard, FileJson, KeyRound, Plug, ShieldCheck, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "./page-header";
+import { advancedImportLinks } from "@/lib/nav";
 
 const CONNECTIONS = [
   { id: "stripe", name: "Stripe", description: "Affiliate revenue → Tide payouts", status: "connected", color: "#635bff", initial: "S" },
@@ -103,6 +105,36 @@ export function SettingsView() {
             <Button variant="outline" size="sm" className="mt-1 w-full">
               <KeyRound className="size-3.5" /> Rotate API keys
             </Button>
+          </div>
+        </Card>
+
+        {/* Advanced imports — hidden from main navigation */}
+        <Card className="p-5 lg:col-span-3">
+          <SectionTitle icon={Camera} title="Advanced imports" />
+          <p className="mt-2 text-[11px] text-subtle">
+            Power-user tools for Hermes screenshot extraction and bulk JSON imports. Your daily habit
+            is the morning update on the dashboard.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {advancedImportLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="group flex items-start gap-3 rounded-xl border border-border/70 bg-white/[0.015] p-4 transition-colors hover:border-border-strong hover:bg-white/[0.03]"
+              >
+                <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-white/[0.04] ring-1 ring-white/10">
+                  {link.href.includes("json") ? (
+                    <FileJson className="size-4 text-muted-foreground" />
+                  ) : (
+                    <Camera className="size-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold group-hover:text-foreground">{link.label}</p>
+                  <p className="mt-0.5 text-[11px] text-subtle">{link.description}</p>
+                </div>
+              </Link>
+            ))}
           </div>
         </Card>
       </div>
