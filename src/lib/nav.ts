@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  CalendarCheck,
   CreditCard,
   FileBarChart2,
   LayoutDashboard,
@@ -16,13 +17,15 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   badge?: string;
-  group: "Overview" | "Avaken" | "Wealth" | "Reporting";
+  group: "Overview" | "Plan" | "Avaken" | "Wealth" | "Reporting";
 }
 
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Overview" },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight, group: "Overview" },
   { label: "Subscriptions", href: "/subscriptions", icon: CreditCard, badge: "19", group: "Overview" },
+
+  { label: "Daily Planner", href: "/planner", icon: CalendarCheck, group: "Plan" },
 
   { label: "Affiliates", href: "/affiliates", icon: Music2, group: "Avaken" },
   { label: "VAT", href: "/vat", icon: Percent, badge: "Q4", group: "Avaken" },
@@ -34,7 +37,7 @@ export const navItems: NavItem[] = [
   { label: "AI Insights", href: "/insights", icon: Sparkles, badge: "5", group: "Reporting" },
 ];
 
-export const navGroups = ["Overview", "Avaken", "Wealth", "Reporting"] as const;
+export const navGroups = ["Overview", "Plan", "Avaken", "Wealth", "Reporting"] as const;
 
 /** Advanced import tools — linked from Settings, not the main sidebar. */
 export const advancedImportLinks = [

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { navItems } from "@/lib/nav";
 
 const primary = navItems.filter((i) =>
-  ["/dashboard", "/transactions", "/affiliates", "/vat", "/insights"].includes(i.href),
+  ["/dashboard", "/planner", "/transactions", "/affiliates", "/insights"].includes(i.href),
 );
 
 export function MobileNav() {
