@@ -65,6 +65,8 @@ export interface TikTokAccount {
   status: "scaling" | "stable" | "warming" | "at-risk";
   spark: number[];
   delta: number; // % vs last month
+  /** Where this account's payouts land: the company (Avaken Ltd / Tide) or a personal bank. */
+  payTo: "company" | "personal";
 }
 
 export interface VatPeriod {

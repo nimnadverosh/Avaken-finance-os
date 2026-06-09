@@ -34,12 +34,12 @@ export const accounts: Account[] = [
 /* ------------------------------------------------------------------ */
 
 export const tiktokAccounts: TikTokAccount[] = [
-  { id: "tt1", handle: "@avaken.tech", niche: "AI & Gadgets", followers: 184200, revenue: 14820, commission: 12, orders: 1340, conversion: 4.8, status: "scaling", delta: 18.4, spark: [6, 7, 9, 8, 11, 13, 14.8] },
-  { id: "tt2", handle: "@avaken.home", niche: "Home & Living", followers: 96400, revenue: 9650, commission: 10, orders: 980, conversion: 3.9, status: "stable", delta: 4.2, spark: [8, 8.4, 9.1, 8.8, 9.2, 9.4, 9.65] },
-  { id: "tt3", handle: "@avaken.beauty", niche: "Beauty", followers: 142800, revenue: 11230, commission: 14, orders: 1510, conversion: 5.2, status: "scaling", delta: 11.7, spark: [7, 8, 9, 9.5, 10, 10.6, 11.2] },
-  { id: "tt4", handle: "@avaken.fit", niche: "Fitness", followers: 61300, revenue: 5210, commission: 11, orders: 540, conversion: 3.1, status: "warming", delta: 27.5, spark: [2.8, 3.2, 3.6, 4.1, 4.5, 4.9, 5.2] },
-  { id: "tt5", handle: "@avaken.deals", niche: "Daily Deals", followers: 210500, revenue: 8740, commission: 9, orders: 1620, conversion: 2.7, status: "at-risk", delta: -6.3, spark: [11, 10.6, 10.1, 9.6, 9.2, 9.0, 8.74] },
-  { id: "tt6", handle: "@avaken.pets", niche: "Pets", followers: 44900, revenue: 3980, commission: 13, orders: 410, conversion: 3.4, status: "warming", delta: 33.1, spark: [1.9, 2.3, 2.7, 3.0, 3.4, 3.7, 3.98] },
+  { id: "tt1", handle: "@avaken.tech", niche: "AI & Gadgets", followers: 184200, revenue: 14820, commission: 12, orders: 1340, conversion: 4.8, status: "scaling", delta: 18.4, spark: [6, 7, 9, 8, 11, 13, 14.8], payTo: "company" },
+  { id: "tt2", handle: "@avaken.home", niche: "Home & Living", followers: 96400, revenue: 9650, commission: 10, orders: 980, conversion: 3.9, status: "stable", delta: 4.2, spark: [8, 8.4, 9.1, 8.8, 9.2, 9.4, 9.65], payTo: "company" },
+  { id: "tt3", handle: "@avaken.beauty", niche: "Beauty", followers: 142800, revenue: 11230, commission: 14, orders: 1510, conversion: 5.2, status: "scaling", delta: 11.7, spark: [7, 8, 9, 9.5, 10, 10.6, 11.2], payTo: "company" },
+  { id: "tt4", handle: "@avaken.fit", niche: "Fitness", followers: 61300, revenue: 5210, commission: 11, orders: 540, conversion: 3.1, status: "warming", delta: 27.5, spark: [2.8, 3.2, 3.6, 4.1, 4.5, 4.9, 5.2], payTo: "personal" },
+  { id: "tt5", handle: "@avaken.deals", niche: "Daily Deals", followers: 210500, revenue: 8740, commission: 9, orders: 1620, conversion: 2.7, status: "at-risk", delta: -6.3, spark: [11, 10.6, 10.1, 9.6, 9.2, 9.0, 8.74], payTo: "personal" },
+  { id: "tt6", handle: "@avaken.pets", niche: "Pets", followers: 44900, revenue: 3980, commission: 13, orders: 410, conversion: 3.4, status: "warming", delta: 33.1, spark: [1.9, 2.3, 2.7, 3.0, 3.4, 3.7, 3.98], payTo: "personal" },
 ];
 
 /* ------------------------------------------------------------------ */

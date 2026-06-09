@@ -33,6 +33,7 @@ export const txnTypeEnum = pgEnum("txn_type", [
 export const cadenceEnum = pgEnum("cadence", ["monthly", "annual", "weekly"]);
 export const subStatusEnum = pgEnum("sub_status", ["active", "trial", "paused"]);
 export const vatStatusEnum = pgEnum("vat_status", ["open", "filed", "due"]);
+export const payToEnum = pgEnum("pay_to", ["company", "personal"]);
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2 });
 
@@ -93,6 +94,7 @@ export const tiktokAccounts = pgTable("tiktok_accounts", {
   orders: integer("orders").notNull().default(0),
   conversion: numeric("conversion", { precision: 5, scale: 2 }),
   status: text("status").notNull().default("stable"),
+  payTo: payToEnum("pay_to").notNull().default("company"),
 });
 
 export const vatPeriods = pgTable("vat_periods", {

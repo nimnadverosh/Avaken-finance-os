@@ -8,6 +8,7 @@ import {
   LineChart,
   Music2,
   Percent,
+  ShieldCheck,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +29,7 @@ export const navItems: NavItem[] = [
   { label: "Daily Planner", href: "/planner", icon: CalendarCheck, group: "Plan" },
 
   { label: "Affiliates", href: "/affiliates", icon: Music2, group: "Avaken" },
+  { label: "Tax Clarity", href: "/tax-clarity", icon: ShieldCheck, group: "Avaken" },
   { label: "VAT", href: "/vat", icon: Percent, badge: "Q4", group: "Avaken" },
   { label: "Tax", href: "/tax", icon: Landmark, group: "Avaken" },
 
