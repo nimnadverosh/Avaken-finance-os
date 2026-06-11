@@ -12,7 +12,9 @@
  */
 
 import { tiktokAccounts, accounts } from "@/lib/data/mock";
+import { currentVatPeriod, getReserves, personalTaxEstimate, vatNetDue } from "@/lib/data/queries";
 import { corpTax } from "@/lib/tax/uk-corp-tax";
+import type { TaxBreakdown } from "@/lib/tax/uk-income-tax";
 import type { TikTokAccount } from "@/lib/data/types";
 
 /** Affiliate `revenue` in the seed data is a monthly figure. */
@@ -162,5 +164,72 @@ export function getTaxClarity(now = new Date()): TaxClarity {
     totalReserve,
     netAfterTax,
     lines,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Quick overview — one-glance "Am I safe this quarter?"              */
+/* ------------------------------------------------------------------ */
+
+export interface QuickOverview {
+  quarterLabel: string;
+  totalRevenue: number;
+  companyRevenue: number;
+  personalRevenue: number;
+  totalToSetAside: number;
+  vatDue: number;
+  vatDaysUntilDue: number;
+  personalSplit: number;
+  companySplit: number;
+  personalTaxEstimate: TaxBreakdown;
+  reservesHeld: number;
+  reservesGap: number;
+  covered: boolean;
+  coverageRatio: number;
+  statusEmoji: "✅" | "⚠️" | "❌";
+  perAccount: AccountRevenue[];
+  reserveLines: ReserveLine[];
+}
+
+function calculateReserves(clarity: TaxClarity): number {
+  return clarity.totalReserve;
+}
+
+export function getQuickOverview(now = new Date()): QuickOverview {
+  const clarity = getTaxClarity(now);
+  const reserves = calculateReserves(clarity);
+  const vat = vatNetDue();
+  const personal = personalTaxEstimate();
+
+  const reserveRows = getReserves("avaken");
+  const reservesHeld = reserveRows.reduce((s, r) => s + r.reserved, 0);
+  const covered = reservesHeld >= reserves;
+  const coverageRatio = reserves === 0 ? 1 : reservesHeld / reserves;
+  const reservesGap = Math.max(0, reserves - reservesHeld);
+
+  const statusEmoji: QuickOverview["statusEmoji"] =
+    coverageRatio >= 0.95 ? "✅" : coverageRatio >= 0.5 ? "⚠️" : "❌";
+
+  const due = new Date(currentVatPeriod().dueDate);
+  const vatDaysUntilDue = Math.ceil((due.getTime() - now.getTime()) / 86400000);
+
+  return {
+    quarterLabel: clarity.quarterLabel,
+    totalRevenue: clarity.totalRevenue,
+    companyRevenue: clarity.companyRevenue,
+    personalRevenue: clarity.personalRevenue,
+    totalToSetAside: reserves,
+    vatDue: vat,
+    vatDaysUntilDue,
+    personalSplit: clarity.personalRevenue,
+    companySplit: clarity.companyRevenue,
+    personalTaxEstimate: personal,
+    reservesHeld,
+    reservesGap,
+    covered,
+    coverageRatio,
+    statusEmoji,
+    perAccount: clarity.perAccount,
+    reserveLines: clarity.lines,
   };
 }
