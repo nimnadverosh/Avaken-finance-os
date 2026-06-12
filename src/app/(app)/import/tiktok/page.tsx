@@ -11,7 +11,7 @@ export default function TikTokImportPage() {
     <div>
       <PageHeader
         title="Monthly TikTok upload"
-        description="Drop your TikTok Shop earnings export — we parse, aggregate, split company vs personal, and refresh the whole dashboard."
+        description="Drop your TikTok Shop earnings export — we parse, aggregate, attribute by month, and refresh the whole dashboard."
       />
       <TikTokImportFlow />
     </div>

@@ -2,8 +2,9 @@
  * Turns a faithfully-parsed report into a dashboard-ready monthly summary.
  *
  * Two responsibilities:
- *   1. SPLIT  — divide every figure between the company (Avaken Ltd) and the
- *      director personally, using a configurable ratio (default 67% / 33%).
+ *   1. ATTRIBUTION — route 100% of the month to Avaken Ltd from Jul 2026
+ *      onwards; everything before Jul 2026 goes 100% to Personal. Derived
+ *      automatically from the report month — no user configuration.
  *   2. SMART VALUE ADJUSTMENT — derive the figures a finance dashboard expects
  *      (expenses, net profit, output VAT, AOV) using realistic, bounded
  *      heuristics so the numbers always read like a real business rather than a
@@ -17,8 +18,8 @@ import type {
   TikTokMonthlySummary,
 } from "./types";
 
-/** Default company/personal revenue split. Configurable in Settings. */
-export const DEFAULT_SPLIT: SplitConfig = { company: 0.67, personal: 0.33 };
+/** From this calendar month, TikTok commission is attributed 100% to Avaken Ltd. */
+export const COMPANY_ATTRIBUTION_START = { year: 2026, month: 7 } as const;
 
 /** Tunable heuristics for the "keep the numbers realistic" pass. */
 export const SMART_ADJUSTMENT = {
@@ -35,18 +36,31 @@ export const SMART_ADJUSTMENT = {
   minDeltaPct: -95,
 } as const;
 
-/** Normalise an arbitrary split input into a valid {company, personal} pair. */
-export function normaliseSplit(input: Partial<SplitConfig> | number): SplitConfig {
-  const company = typeof input === "number" ? input : input.company ?? DEFAULT_SPLIT.company;
-  const clamped = Math.min(1, Math.max(0, company));
-  return { company: clamped, personal: round4(1 - clamped) };
+/**
+ * Automatic company vs personal attribution for a calendar month.
+ * Jul 2026 onwards → 100% company; earlier → 100% personal.
+ */
+export function splitForMonth(year: number, month: number): SplitConfig {
+  const isCompany =
+    year > COMPANY_ATTRIBUTION_START.year ||
+    (year === COMPANY_ATTRIBUTION_START.year && month >= COMPANY_ATTRIBUTION_START.month);
+  return isCompany ? { company: 1, personal: 0 } : { company: 0, personal: 1 };
+}
+
+/** Same rule, keyed by `"YYYY-MM"`. */
+export function splitForMonthKey(monthKey: string): SplitConfig {
+  const [y, m] = monthKey.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return { company: 0, personal: 1 };
+  return splitForMonth(y, m);
+}
+
+/** Human-readable label for the attribution side that receives 100%. */
+export function attributionLabel(split: SplitConfig): "Avaken Ltd" | "Personal" {
+  return split.company >= 0.5 ? "Avaken Ltd" : "Personal";
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-function round4(n: number): number {
-  return Math.round(n * 10000) / 10000;
 }
 
 /** Build the company/personal figures for one side of the split. */
@@ -68,14 +82,11 @@ function sideFigures(
 }
 
 /**
- * Apply the split + smart-adjustment rules to a parsed report.
+ * Apply automatic attribution + smart-adjustment rules to a parsed report.
  * Returns a `TikTokMonthlySummary` ready for the store and dashboard.
  */
-export function buildMonthlySummary(
-  report: ParsedTikTokReport,
-  splitInput: Partial<SplitConfig> | number = DEFAULT_SPLIT,
-): TikTokMonthlySummary {
-  const split = normaliseSplit(splitInput);
+export function buildMonthlySummary(report: ParsedTikTokReport): TikTokMonthlySummary {
+  const split = splitForMonth(report.year, report.month);
   const grossRevenue = Math.max(0, report.grossRevenue);
 
   // Smart-adjusted operating expenses: a realistic share of revenue, floored so

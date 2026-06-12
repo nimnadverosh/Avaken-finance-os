@@ -4,16 +4,16 @@ import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, RotateCcw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ImportStatusAlert } from "@/components/import/import-status-alert";
 import { useToast } from "@/components/ui/toast";
 import { TikTokUploadZone } from "./tiktok-upload-zone";
 import { TikTokLoadingState } from "./tiktok-loading-state";
 import { TikTokSummaryPreview } from "./tiktok-summary-preview";
-import { SplitControl } from "./split-control";
 import { TikTokUploadHistory } from "./tiktok-upload-history";
 import { parseTikTokFile } from "@/lib/tiktok/parse";
-import { buildMonthlySummary, normaliseSplit } from "@/lib/tiktok/model";
-import { getSplitConfig, saveTikTokUpload, setSplitConfig } from "@/lib/tiktok/store";
+import { attributionLabel, buildMonthlySummary } from "@/lib/tiktok/model";
+import { saveTikTokUpload } from "@/lib/tiktok/store";
 import { formatCurrency } from "@/lib/format";
 import type { ParsedTikTokReport } from "@/lib/tiktok/types";
 
@@ -26,16 +26,13 @@ export function TikTokImportFlow() {
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [report, setReport] = useState<ParsedTikTokReport | null>(null);
-  const [companyFraction, setCompanyFraction] = useState(() => getSplitConfig().company);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedLabel, setSavedLabel] = useState("");
 
-  // Re-model live as the split slider moves — no recompute of the parse needed.
-  const split = useMemo(() => normaliseSplit(companyFraction), [companyFraction]);
   const summary = useMemo(
-    () => (report ? buildMonthlySummary(report, split) : null),
-    [report, split],
+    () => (report ? buildMonthlySummary(report) : null),
+    [report],
   );
 
   const reset = useCallback(() => {
@@ -44,7 +41,6 @@ export function TikTokImportFlow() {
     setFileName("");
     setError(null);
     setSavedLabel("");
-    setCompanyFraction(getSplitConfig().company);
   }, []);
 
   const handleFile = useCallback(async (file: File) => {
@@ -65,22 +61,19 @@ export function TikTokImportFlow() {
     if (!report) return;
     setSaving(true);
     try {
-      // Persist the chosen split globally, then store this month's report.
-      setSplitConfig(split.company);
       const record = saveTikTokUpload(report, fileName);
       setSavedLabel(record.summary.periodLabel);
       setStep("done");
       toast({
         title: `${record.summary.periodLabel} imported`,
-        description: `${formatCurrency(record.summary.grossRevenue, { decimals: 2 })} commission · dashboard updated`,
+        description: `${formatCurrency(record.summary.grossRevenue, { decimals: 2 })} → ${attributionLabel(record.summary.split)} · dashboard updated`,
         variant: "success",
       });
-      // Refresh server components that read the ledger.
       router.refresh();
     } finally {
       setSaving(false);
     }
-  }, [report, fileName, split.company, toast, router]);
+  }, [report, fileName, toast, router]);
 
   return (
     <div className="space-y-6">
@@ -101,9 +94,17 @@ export function TikTokImportFlow() {
         <div className="space-y-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Review {summary.periodLabel}</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold">Review {summary.periodLabel}</h2>
+                <Badge tone={summary.split.company >= 1 ? "positive" : "info"}>
+                  100% {attributionLabel(summary.split)}
+                </Badge>
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                {report.creatorName || "Creator"} · {report.lineCount} settlement lines · parsed in your browser
+                {report.creatorName || "Creator"} · {report.lineCount} settlement lines ·{" "}
+                {summary.split.company >= 1
+                  ? "Jul 2026+ reports go to Avaken Ltd"
+                  : "Pre–Jul 2026 reports go to Personal"}
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={reset} disabled={saving}>
@@ -111,8 +112,6 @@ export function TikTokImportFlow() {
               Choose another file
             </Button>
           </div>
-
-          <SplitControl split={split} onChange={setCompanyFraction} disabled={saving} />
 
           <TikTokSummaryPreview summary={summary} report={report} />
 
@@ -142,8 +141,8 @@ export function TikTokImportFlow() {
               <CheckCircle2 className="size-7 text-primary" />
             </div>
             <p className="text-sm text-muted-foreground">
-              Your numbers were aggregated, split between Avaken Ltd and personal, and smart-adjusted
-              to stay realistic. The report is saved to your upload history.
+              Commission was attributed automatically from the report month (100% Avaken Ltd from Jul
+              2026, 100% Personal before). Figures are smart-adjusted and saved to your upload history.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               <Button onClick={() => router.push("/dashboard")}>

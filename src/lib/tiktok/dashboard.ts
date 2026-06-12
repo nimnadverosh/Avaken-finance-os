@@ -5,14 +5,23 @@
  * The headline job is `buildTrailingSeries`, which anchors a smooth, realistic
  * trailing-12-month revenue curve on the real uploaded months (the core of the
  * "smart value adjustment" requirement) so charts never show a broken spike.
+ *
+ * Company vs personal attribution is applied per calendar month (Jul 2026+
+ * → Avaken Ltd; earlier → Personal).
  */
 
 import type { Insight, SeriesPoint, TikTokAccount } from "@/lib/data/types";
 import { tiktokAccounts } from "@/lib/data/mock";
 import { formatCurrency } from "@/lib/format";
-import { SMART_ADJUSTMENT, clampDelta, monthOverMonthDelta } from "./model";
-import { getSplitConfig, getTikTokUploads } from "./store";
-import type { SplitConfig, TikTokMonthlySummary } from "./types";
+import {
+  SMART_ADJUSTMENT,
+  attributionLabel,
+  clampDelta,
+  monthOverMonthDelta,
+  splitForMonthKey,
+} from "./model";
+import { getTikTokUploads } from "./store";
+import type { TikTokMonthlySummary } from "./types";
 
 const SHORT_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -27,15 +36,14 @@ export interface TikTokTrailingPoint {
   label: string; // short month, e.g. "Nov"
   monthKey: string; // "2025-11"
   gross: number; // GBP, all TikTok revenue that month
-  company: number; // company split
-  personal: number; // personal split
+  company: number; // Avaken share (100% from Jul 2026)
+  personal: number; // Personal share (100% before Jul 2026)
   isReal: boolean; // true if backed by an actual upload
 }
 
 export interface TikTokDashboardModel {
   latest: TikTokMonthlySummary;
   previous: TikTokMonthlySummary | null;
-  split: SplitConfig;
   series: TikTokTrailingPoint[];
   uploadCount: number;
 }
@@ -59,11 +67,9 @@ function deriveGrowth(anchors: { index: number; gross: number }[]): number {
  * Build a trailing-12-month series ending on the latest uploaded month.
  * Real months use their true totals; gaps are interpolated, and months before
  * the earliest upload are back-projected using a clamped growth rate.
+ * Each month's company/personal split follows the Jul 2026 cutoff rule.
  */
-function buildTrailingSeries(
-  uploads: { summary: TikTokMonthlySummary }[],
-  split: SplitConfig,
-): TikTokTrailingPoint[] {
+function buildTrailingSeries(uploads: { summary: TikTokMonthlySummary }[]): TikTokTrailingPoint[] {
   const latest = uploads[0].summary;
   const known = new Map<string, number>();
   uploads.forEach((u) => known.set(u.summary.monthKey, u.summary.grossRevenue));
@@ -90,16 +96,13 @@ function buildTrailingSeries(
     const after = anchors.find((a) => a.index > index);
 
     if (before && after) {
-      // Linear interpolation between two real anchors.
       const t = (index - before.index) / (after.index - before.index);
       return before.gross + (after.gross - before.gross) * t;
     }
     if (after) {
-      // Back-project below the earliest known month.
       return after.gross / Math.pow(1 + growth, after.index - index);
     }
     if (before) {
-      // Forward-project beyond the latest known month.
       return before.gross * Math.pow(1 + growth, index - before.index);
     }
     return 0;
@@ -107,6 +110,7 @@ function buildTrailingSeries(
 
   return window.map((w, index) => {
     const gross = round2(Math.max(0, grossByIndex[index]));
+    const split = splitForMonthKey(w.monthKey);
     return {
       label: w.label,
       monthKey: w.monthKey,
@@ -122,12 +126,10 @@ function buildTrailingSeries(
 export function getTikTokDashboardModel(): TikTokDashboardModel | null {
   const uploads = getTikTokUploads();
   if (uploads.length === 0) return null;
-  const split = getSplitConfig();
   return {
     latest: uploads[0].summary,
     previous: uploads[1]?.summary ?? null,
-    split,
-    series: buildTrailingSeries(uploads, split),
+    series: buildTrailingSeries(uploads),
     uploadCount: uploads.length,
   };
 }
@@ -153,23 +155,26 @@ export function tiktokRevenueSeries(
 /**
  * Rescale the six seed TikTok accounts so their combined revenue equals the
  * company's actual commission for the latest month — preserving the rich
- * leaderboard UI (followers, conversion, sparklines) while showing real totals.
+ * leaderboard UI while showing real totals. Zero when the latest month is
+ * attributed 100% to personal.
  */
 export function tiktokScaledAffiliates(model: TikTokDashboardModel): TikTokAccount[] {
   const target = model.latest.company.revenue;
   const seedTotal = tiktokAccounts.reduce((sum, a) => sum + a.revenue, 0);
-  const factor = seedTotal > 0 ? target / seedTotal : 0;
-  const overallDelta = model.previous
-    ? monthOverMonthDelta(model.latest.company.revenue, model.previous.company.revenue)
-    : 0;
+  const factor = seedTotal > 0 && target > 0 ? target / seedTotal : 0;
+  const overallDelta =
+    model.previous && model.latest.company.revenue > 0
+      ? monthOverMonthDelta(model.latest.company.revenue, model.previous.company.revenue)
+      : model.previous
+        ? monthOverMonthDelta(model.latest.grossRevenue, model.previous.grossRevenue)
+        : 0;
 
   return tiktokAccounts.map((a) => {
     const revenue = round2(a.revenue * factor);
     return {
       ...a,
       revenue,
-      orders: Math.max(1, Math.round(a.orders * factor)),
-      // Nudge each account's own delta toward the real overall movement.
+      orders: factor > 0 ? Math.max(1, Math.round(a.orders * factor)) : 0,
       delta: clampDelta((a.delta + overallDelta) / 2),
       spark: a.spark.map((v) => round2(v * factor)),
     };
@@ -180,13 +185,14 @@ export function tiktokScaledAffiliates(model: TikTokDashboardModel): TikTokAccou
 export function tiktokInsights(model: TikTokDashboardModel): Insight[] {
   const { latest, previous } = model;
   const out: Insight[] = [];
+  const attributedTo = attributionLabel(latest.split);
 
   if (previous) {
     const delta = monthOverMonthDelta(latest.grossRevenue, previous.grossRevenue);
     out.push({
       id: `tt-mom-${latest.monthKey}`,
       title: delta >= 0 ? "TikTok revenue is up MoM" : "TikTok revenue dipped MoM",
-      body: `${latest.shortMonth} commission came in at ${formatCurrency(latest.grossRevenue, { decimals: 2 })} — ${delta >= 0 ? "+" : ""}${delta}% vs ${previous.shortMonth}. Company share ${formatCurrency(latest.company.revenue, { decimals: 2 })}, personal ${formatCurrency(latest.personal.revenue, { decimals: 2 })}.`,
+      body: `${latest.shortMonth} commission came in at ${formatCurrency(latest.grossRevenue, { decimals: 2 })} — ${delta >= 0 ? "+" : ""}${delta}% vs ${previous.shortMonth}. Attributed 100% to ${attributedTo}.`,
       severity: delta >= 0 ? "positive" : "warning",
       tag: "Affiliates",
     });
@@ -203,13 +209,15 @@ export function tiktokInsights(model: TikTokDashboardModel): Insight[] {
     });
   }
 
-  out.push({
-    id: `tt-vat-${latest.monthKey}`,
-    title: "Output VAT set aside from commission",
-    body: `${formatCurrency(latest.outputVat, { decimals: 2 })} of ${latest.shortMonth}'s commission is output VAT (20% on the UK-able portion). Net profit after estimated costs is ${formatCurrency(latest.netProfit, { decimals: 2 })} (${latest.marginPct}% margin).`,
-    severity: "info",
-    tag: "VAT",
-  });
+  if (latest.split.company >= 1) {
+    out.push({
+      id: `tt-vat-${latest.monthKey}`,
+      title: "Output VAT set aside from commission",
+      body: `${formatCurrency(latest.company.vatOnSales, { decimals: 2 })} of ${latest.shortMonth}'s commission is output VAT (20% on the UK-able portion). Net profit after estimated costs is ${formatCurrency(latest.netProfit, { decimals: 2 })} (${latest.marginPct}% margin).`,
+      severity: "info",
+      tag: "VAT",
+    });
+  }
 
   const bestDay = [...latest.daily].sort((a, b) => b.revenue - a.revenue)[0];
   if (bestDay) {

@@ -75,11 +75,11 @@ export interface ParsedTikTokReport {
   warnings: string[];
 }
 
-/** Company (Avaken Ltd) vs personal revenue-share configuration. */
+/** Derived company vs personal attribution (automatic from report month). */
 export interface SplitConfig {
-  /** Fraction routed to the company, 0–1. Personal is the remainder. */
+  /** Fraction routed to the company, 0 or 1. */
   company: number;
-  /** Fraction routed to personal, 0–1. Always 1 − company. */
+  /** Fraction routed to personal, 0 or 1. Always 1 − company. */
   personal: number;
 }
 

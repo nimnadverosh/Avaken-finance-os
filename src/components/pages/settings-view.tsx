@@ -61,7 +61,7 @@ export function SettingsView() {
           </div>
         </Card>
 
-        {/* TikTok earnings split + uploads */}
+        {/* TikTok earnings uploads */}
         <TikTokSettingsCard />
 
         <div className="lg:col-span-3">

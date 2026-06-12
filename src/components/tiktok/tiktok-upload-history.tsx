@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
+import { attributionLabel } from "@/lib/tiktok/model";
 import { deleteTikTokUpload, getTikTokUploads } from "@/lib/tiktok/store";
 
 /** Historical list of every stored monthly upload, with per-row delete. */
@@ -31,7 +32,9 @@ export function TikTokUploadHistory() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold">{u.summary.periodLabel}</p>
-                <Badge tone="info">{Math.round(u.split.company * 100)}/{Math.round(u.split.personal * 100)}</Badge>
+                <Badge tone={u.split.company >= 1 ? "positive" : "info"}>
+                  {attributionLabel(u.split)}
+                </Badge>
               </div>
               <p className="truncate text-[11px] text-subtle">
                 {u.fileName} · uploaded {formatDate(u.uploadedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}

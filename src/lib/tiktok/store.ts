@@ -8,20 +8,20 @@
  *   • pure getters the query layer reads from
  *
  * Stored data is keyed by month — re-uploading the same month replaces it.
+ * Attribution (company vs personal) is derived automatically from each report's
+ * month on load and save — no manual split configuration.
  */
 
-import type { ParsedTikTokReport, SplitConfig, TikTokUploadRecord } from "./types";
-import { buildMonthlySummary, DEFAULT_SPLIT, normaliseSplit } from "./model";
+import type { ParsedTikTokReport, TikTokUploadRecord } from "./types";
+import { buildMonthlySummary } from "./model";
 
 const UPLOADS_KEY = "avaken-tiktok-uploads";
-const SPLIT_KEY = "avaken-tiktok-split";
 const MAX_UPLOADS = 36; // three years of monthly reports
 
-/** Fired whenever uploads or the split config change. */
+/** Fired whenever uploads change. */
 export const TIKTOK_UPLOADS_CHANGED = "avaken-tiktok-uploads-changed";
 
 let uploads: TikTokUploadRecord[] = [];
-let split: SplitConfig = { ...DEFAULT_SPLIT };
 let hydrated = false;
 
 /* ------------------------------------------------------------------ */
@@ -35,28 +35,22 @@ function hydrate(): void {
     const rawUploads = localStorage.getItem(UPLOADS_KEY);
     if (rawUploads) {
       const parsed = JSON.parse(rawUploads) as unknown;
-      if (Array.isArray(parsed)) uploads = parsed.filter(isUploadRecord);
+      if (Array.isArray(parsed)) {
+        // Re-model on load so attribution rules stay current (e.g. Jul 2026 cutoff).
+        uploads = parsed.filter(isUploadRecord).map(remodelUpload);
+      }
     }
   } catch {
     uploads = [];
   }
-  try {
-    const rawSplit = localStorage.getItem(SPLIT_KEY);
-    if (rawSplit) split = normaliseSplit(JSON.parse(rawSplit) as Partial<SplitConfig>);
-  } catch {
-    split = { ...DEFAULT_SPLIT };
-  }
+  // Drop legacy split config key — attribution is now automatic.
+  localStorage.removeItem("avaken-tiktok-split");
 }
 
 function persistUploads(): void {
   if (typeof window === "undefined") return;
   if (uploads.length === 0) localStorage.removeItem(UPLOADS_KEY);
   else localStorage.setItem(UPLOADS_KEY, JSON.stringify(uploads.slice(0, MAX_UPLOADS)));
-}
-
-function persistSplit(): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SPLIT_KEY, JSON.stringify(split));
 }
 
 function notifyChanged(): void {
@@ -76,36 +70,15 @@ function isUploadRecord(value: unknown): value is TikTokUploadRecord {
   );
 }
 
+/** Re-apply automatic attribution + smart-adjustment to a stored upload. */
+function remodelUpload(record: TikTokUploadRecord): TikTokUploadRecord {
+  const summary = buildMonthlySummary(record.report);
+  return { ...record, split: summary.split, summary };
+}
+
 /** Uploads sorted newest month first. */
 function sortedByMonth(list: TikTokUploadRecord[]): TikTokUploadRecord[] {
   return [...list].sort((a, b) => b.summary.monthKey.localeCompare(a.summary.monthKey));
-}
-
-/* ------------------------------------------------------------------ */
-/*  Split configuration                                                */
-/* ------------------------------------------------------------------ */
-
-export function getSplitConfig(): SplitConfig {
-  hydrate();
-  return { ...split };
-}
-
-/**
- * Update the company/personal split. Re-models every stored upload so the
- * dashboard reflects the new ratio immediately.
- */
-export function setSplitConfig(input: Partial<SplitConfig> | number): SplitConfig {
-  hydrate();
-  split = normaliseSplit(input);
-  uploads = uploads.map((u) => ({
-    ...u,
-    split,
-    summary: buildMonthlySummary(u.report, split),
-  }));
-  persistSplit();
-  persistUploads();
-  notifyChanged();
-  return { ...split };
 }
 
 /* ------------------------------------------------------------------ */
@@ -129,24 +102,23 @@ export function hasTikTokUploads(): boolean {
 }
 
 /**
- * Persist a freshly-parsed report. Models it with the current split and
- * replaces any existing upload for the same month.
+ * Persist a freshly-parsed report. Attribution is derived from the report month.
+ * Replaces any existing upload for the same month.
  */
 export function saveTikTokUpload(
   report: ParsedTikTokReport,
   fileName: string,
 ): TikTokUploadRecord {
   hydrate();
-  const summary = buildMonthlySummary(report, split);
+  const summary = buildMonthlySummary(report);
   const record: TikTokUploadRecord = {
     id: `tiktok-${summary.monthKey}-${Date.now()}`,
     fileName,
     uploadedAt: new Date().toISOString(),
-    split,
+    split: summary.split,
     report,
     summary,
   };
-  // Replace same-month uploads, keep the rest.
   uploads = [record, ...uploads.filter((u) => u.summary.monthKey !== summary.monthKey)].slice(
     0,
     MAX_UPLOADS,

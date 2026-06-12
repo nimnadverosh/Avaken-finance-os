@@ -25,8 +25,9 @@ export function TikTokLoadingState({ fileName }: { fileName?: string }) {
           Reading your TikTok report…
         </h3>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          {fileName ? `Parsing ${fileName}` : "Parsing the workbook"} — aggregating commission,
-          orders and the company / personal split. This stays entirely in your browser.
+          {fileName ? `Parsing ${fileName}` : "Parsing the workbook"} — aggregating commission and
+          orders, then attributing to Avaken Ltd or Personal from the report month. This stays entirely
+          in your browser.
         </p>
         <div className="mt-8 h-1 w-48 overflow-hidden rounded-full bg-white/[0.06]">
           <div className="h-full w-1/3 animate-[shimmer_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />

@@ -5,9 +5,10 @@ import { Card } from "@/components/ui/card";
 import { Sparkline } from "@/components/ui/sparkline";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { attributionLabel } from "@/lib/tiktok/model";
 import type { ParsedTikTokReport, TikTokMonthlySummary } from "@/lib/tiktok/types";
 
-/** Read-only preview of a modelled month: headline KPIs, split, breakdowns, trend. */
+/** Read-only preview of a modelled month: headline KPIs, attribution, breakdowns, trend. */
 export function TikTokSummaryPreview({
   summary,
   report,
@@ -16,6 +17,10 @@ export function TikTokSummaryPreview({
   report: ParsedTikTokReport;
 }) {
   const maxDay = Math.max(1, ...summary.daily.map((d) => d.revenue));
+  const isCompany = summary.split.company >= 1;
+  const attributed = isCompany ? summary.company : summary.personal;
+  const accent = isCompany ? "#10b981" : "#38bdf8";
+  const Icon = isCompany ? Building2 : User;
 
   return (
     <div className="space-y-5">
@@ -24,27 +29,40 @@ export function TikTokSummaryPreview({
         <Kpi icon={TrendingUp} label="Gross commission" value={formatCurrency(summary.grossRevenue, { decimals: 2 })} accent="#10b981" />
         <Kpi icon={Receipt} label="Net profit" value={formatCurrency(summary.netProfit, { decimals: 2 })} accent="#34d399" sub={`${summary.marginPct}% margin`} />
         <Kpi icon={Package} label="Orders" value={formatNumber(summary.orderCount)} accent="#a78bfa" sub={`${report.lineCount} lines`} />
-        <Kpi icon={Percent} label="Output VAT" value={formatCurrency(summary.outputVat, { decimals: 2 })} accent="#f59e0b" />
+        <Kpi
+          icon={Percent}
+          label="Output VAT"
+          value={formatCurrency(isCompany ? summary.company.vatOnSales : 0, { decimals: 2 })}
+          accent="#f59e0b"
+        />
         <Kpi icon={TrendingUp} label="Avg order value" value={formatCurrency(summary.avgOrderValue, { decimals: 2 })} accent="#38bdf8" />
       </div>
 
-      {/* Company / personal split */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <SplitCard
-          icon={Building2}
-          label="Avaken Ltd"
-          pct={Math.round(summary.split.company * 100)}
-          figures={summary.company}
-          accent="#10b981"
-        />
-        <SplitCard
-          icon={User}
-          label="Personal"
-          pct={Math.round(summary.split.personal * 100)}
-          figures={summary.personal}
-          accent="#38bdf8"
-        />
-      </div>
+      {/* Automatic attribution */}
+      <Card className={cn("relative overflow-hidden p-5")}>
+        <div className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full opacity-20 blur-3xl" style={{ background: accent }} />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="grid size-9 place-items-center rounded-xl" style={{ background: `${accent}22`, color: accent }}>
+              <Icon className="size-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">100% {attributionLabel(summary.split)}</p>
+              <p className="text-[11px] text-subtle">
+                {isCompany ? "Jul 2026 and later → Avaken Ltd" : "Before Jul 2026 → Personal"}
+              </p>
+            </div>
+          </div>
+          <p className="tabular text-xl font-semibold" style={{ color: accent }}>
+            {formatCurrency(attributed.revenue, { decimals: 2 })}
+          </p>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <Tile label="Net" value={formatCurrency(attributed.netProfit, { decimals: 0 })} />
+          <Tile label="Orders" value={formatNumber(attributed.orders)} />
+          <Tile label="VAT" value={formatCurrency(attributed.vatOnSales, { decimals: 0 })} />
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Daily trend */}
@@ -147,45 +165,6 @@ function Kpi({
       </div>
       <p className="tabular mt-1.5 text-lg font-semibold">{value}</p>
       {sub && <p className="text-[11px] text-subtle">{sub}</p>}
-    </Card>
-  );
-}
-
-function SplitCard({
-  icon: Icon,
-  label,
-  pct,
-  figures,
-  accent,
-}: {
-  icon: typeof Building2;
-  label: string;
-  pct: number;
-  figures: { revenue: number; netProfit: number; orders: number; vatOnSales: number };
-  accent: string;
-}) {
-  return (
-    <Card className={cn("relative overflow-hidden p-5")}>
-      <div className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full opacity-20 blur-3xl" style={{ background: accent }} />
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="grid size-9 place-items-center rounded-xl" style={{ background: `${accent}22`, color: accent }}>
-            <Icon className="size-4" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">{label}</p>
-            <p className="text-[11px] text-subtle">{pct}% share</p>
-          </div>
-        </div>
-        <p className="tabular text-xl font-semibold" style={{ color: accent }}>
-          {formatCurrency(figures.revenue, { decimals: 2 })}
-        </p>
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-        <Tile label="Net" value={formatCurrency(figures.netProfit, { decimals: 0 })} />
-        <Tile label="Orders" value={formatNumber(figures.orders)} />
-        <Tile label="VAT" value={formatCurrency(figures.vatOnSales, { decimals: 0 })} />
-      </div>
     </Card>
   );
 }
