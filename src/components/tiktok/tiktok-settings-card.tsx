@@ -5,15 +5,18 @@ import Link from "next/link";
 import { Music2, Upload } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
-import { getTikTokUploads } from "@/lib/tiktok/store";
+import { getAffiliateAccounts } from "@/lib/tiktok/accounts";
 import { attributionLabel } from "@/lib/tiktok/model";
+import { getTikTokUploads } from "@/lib/tiktok/store";
 import { formatCurrency } from "@/lib/format";
 
 /** Settings card: TikTok upload summary and link to the uploader. */
 export function TikTokSettingsCard() {
   const version = useMockDataVersion();
   const uploads = useMemo(() => getTikTokUploads(), [version]);
+  const accounts = useMemo(() => getAffiliateAccounts(), [version]);
   const latest = uploads[0];
 
   return (
@@ -33,17 +36,22 @@ export function TikTokSettingsCard() {
       </div>
 
       <p className="mt-2 text-[11px] text-subtle">
-        Attribution is automatic from the report month: <strong className="text-foreground">100% Avaken Ltd</strong> from
-        Jul 2026 onwards, <strong className="text-foreground">100% Personal</strong> before that.
+        {accounts.length} affiliate account{accounts.length === 1 ? "" : "s"} · assign each Excel upload
+        to the correct account. Attribution is automatic from the report month.
       </p>
 
       <div className="mt-4 rounded-2xl border border-border/70 bg-white/[0.015] p-5">
         <p className="text-[11px] font-medium text-muted-foreground">Latest upload</p>
         {latest ? (
           <>
-            <p className="mt-1 text-lg font-semibold">{latest.summary.periodLabel}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <p className="text-lg font-semibold">{latest.summary.periodLabel}</p>
+              <Badge tone="info">
+                {accounts.find((a) => a.id === latest.accountId)?.handle ?? "Account"}
+              </Badge>
+            </div>
             <p className="tabular text-sm text-muted-foreground">
-              {formatCurrency(latest.summary.grossRevenue, { decimals: 2 })} · {uploads.length} on record
+              {formatCurrency(latest.summary.grossRevenue, { decimals: 2 })} · {uploads.length} upload{uploads.length === 1 ? "" : "s"} on record
             </p>
             <p className="mt-3 text-[11px] text-subtle">
               Attributed to {attributionLabel(latest.summary.split)} ·{" "}
@@ -56,7 +64,9 @@ export function TikTokSettingsCard() {
             </p>
           </>
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground">No reports uploaded yet.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            No reports uploaded yet — add accounts and import your Nov 2025 earnings file.
+          </p>
         )}
       </div>
     </Card>

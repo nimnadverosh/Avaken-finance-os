@@ -21,17 +21,30 @@ const STATUS_LABEL = {
 
 export function AffiliatesLeaderboard({ accounts }: { accounts: TikTokAccount[] }) {
   const total = accounts.reduce((a, b) => a + b.revenue, 0);
+  const withData = accounts.filter((a) => a.revenue > 0);
+
+  if (withData.length === 0) {
+    return (
+      <Card className="overflow-hidden p-5 text-center">
+        <h3 className="text-sm font-semibold tracking-tight">TikTok Shop affiliates</h3>
+        <p className="mt-2 text-[11px] text-subtle">
+          Add affiliate accounts and upload monthly earnings reports to see real numbers here.
+        </p>
+      </Card>
+    );
+  }
+
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
         <div>
           <h3 className="text-sm font-semibold tracking-tight">TikTok Shop · Top performers</h3>
-          <p className="text-[11px] text-subtle">{accounts.length} accounts · {formatCurrency(total)} MTD</p>
+          <p className="text-[11px] text-subtle">{withData.length} accounts · {formatCurrency(total)} MTD</p>
         </div>
         <span className="text-[11px] text-subtle">last 7 days</span>
       </div>
       <div className="divide-y divide-border/60">
-        {accounts.map((a) => (
+        {withData.map((a) => (
           <div key={a.id} className="grid grid-cols-[1fr_auto] gap-3 px-5 py-3.5 sm:grid-cols-[1.6fr_1fr_auto] sm:items-center">
             <div className="min-w-0">
               <div className="flex items-center gap-2">

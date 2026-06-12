@@ -11,9 +11,11 @@ import { TikTokUploadZone } from "./tiktok-upload-zone";
 import { TikTokLoadingState } from "./tiktok-loading-state";
 import { TikTokSummaryPreview } from "./tiktok-summary-preview";
 import { TikTokUploadHistory } from "./tiktok-upload-history";
+import { TikTokAccountManager, TikTokAccountSelect } from "./tiktok-account-manager";
 import { parseTikTokFile } from "@/lib/tiktok/parse";
 import { attributionLabel, buildMonthlySummary } from "@/lib/tiktok/model";
 import { saveTikTokUpload } from "@/lib/tiktok/store";
+import { findAccountByCreatorName, getAffiliateAccounts } from "@/lib/tiktok/accounts";
 import { formatCurrency } from "@/lib/format";
 import type { ParsedTikTokReport } from "@/lib/tiktok/types";
 
@@ -26,6 +28,7 @@ export function TikTokImportFlow() {
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [report, setReport] = useState<ParsedTikTokReport | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedLabel, setSavedLabel] = useState("");
@@ -35,10 +38,14 @@ export function TikTokImportFlow() {
     [report],
   );
 
+  const suggestedPayTo: "personal" | "company" =
+    summary && summary.split.company >= 1 ? "company" : "personal";
+
   const reset = useCallback(() => {
     setStep("upload");
     setReport(null);
     setFileName("");
+    setAccountId(null);
     setError(null);
     setSavedLabel("");
   }, []);
@@ -50,6 +57,13 @@ export function TikTokImportFlow() {
     try {
       const parsed = await parseTikTokFile(file);
       setReport(parsed);
+      const matched = findAccountByCreatorName(parsed.creatorName);
+      if (matched) setAccountId(matched.id);
+      else if (getAffiliateAccounts().length === 1) {
+        setAccountId(getAffiliateAccounts()[0]!.id);
+      } else {
+        setAccountId(null);
+      }
       setStep("preview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that file. Please try again.");
@@ -58,22 +72,26 @@ export function TikTokImportFlow() {
   }, []);
 
   const handleConfirm = useCallback(() => {
-    if (!report) return;
+    if (!report || !accountId) return;
     setSaving(true);
     try {
-      const record = saveTikTokUpload(report, fileName);
+      const record = saveTikTokUpload(report, fileName, accountId);
+      const account = getAffiliateAccounts().find((a) => a.id === accountId);
       setSavedLabel(record.summary.periodLabel);
       setStep("done");
       toast({
         title: `${record.summary.periodLabel} imported`,
-        description: `${formatCurrency(record.summary.grossRevenue, { decimals: 2 })} → ${attributionLabel(record.summary.split)} · dashboard updated`,
+        description: `${formatCurrency(record.summary.grossRevenue, { decimals: 2 })} → ${account?.handle ?? "account"} · dashboard updated`,
         variant: "success",
       });
       router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save upload.");
+      setStep("preview");
     } finally {
       setSaving(false);
     }
-  }, [report, fileName, toast, router]);
+  }, [report, fileName, accountId, toast, router]);
 
   return (
     <div className="space-y-6">
@@ -83,6 +101,7 @@ export function TikTokImportFlow() {
 
       {step === "upload" && (
         <>
+          <TikTokAccountManager compact />
           <TikTokUploadZone onFile={handleFile} />
           <TikTokUploadHistory />
         </>
@@ -113,17 +132,28 @@ export function TikTokImportFlow() {
             </Button>
           </div>
 
+          <TikTokAccountSelect
+            value={accountId}
+            onChange={setAccountId}
+            suggestedHandle={report.creatorName}
+            suggestedPayTo={suggestedPayTo}
+          />
+
           <TikTokSummaryPreview summary={summary} report={report} />
 
           <div className="sticky bottom-4 z-20 rounded-2xl border border-primary/25 bg-background/90 p-3 backdrop-blur-xl">
             <Button
               size="lg"
               onClick={handleConfirm}
-              disabled={saving}
+              disabled={saving || !accountId}
               className="h-12 w-full text-base font-semibold shadow-[0_8px_32px_-8px_rgba(16,185,129,0.55)]"
             >
               <Save className="size-4" />
-              {saving ? "Saving…" : `Import ${summary.periodLabel} & update dashboard`}
+              {saving
+                ? "Saving…"
+                : !accountId
+                  ? "Select an account to import"
+                  : `Import ${summary.periodLabel} & update dashboard`}
             </Button>
           </div>
         </div>

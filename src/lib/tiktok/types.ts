@@ -122,6 +122,8 @@ export interface TikTokMonthlySummary {
 /** A persisted upload (parsed report + modelled summary + provenance). */
 export interface TikTokUploadRecord {
   id: string;
+  /** Which registered affiliate account this report belongs to. */
+  accountId: string;
   fileName: string;
   uploadedAt: string; // ISO timestamp
   split: SplitConfig;

@@ -2,23 +2,23 @@
  * Tax Clarity — a single, calm view of "what to set aside" across mixed
  * TikTok Shop income.
  *
- * Some affiliate accounts pay into Avaken Ltd (Tide business account) and are
- * therefore COMPANY income — exposed to VAT (output) and Corporation Tax on
- * profit. Other accounts pay into personal banks and are PERSONAL income —
- * taxed at the director's marginal Income Tax rate.
- *
- * The numbers here are deliberately conservative reserve *suggestions*, not
- * filed figures. Every rate is a named constant so the maths stays legible.
+ * When monthly TikTok reports have been uploaded, all revenue figures come from
+ * those real uploads (with automatic Jul 2026 company / pre-Jul personal
+ * attribution). Otherwise falls back to seed data for demo mode.
  */
 
-import { tiktokAccounts, accounts } from "@/lib/data/mock";
+import { accounts, tiktokAccounts } from "@/lib/data/mock";
 import { currentVatPeriod, getReserves, personalTaxEstimate, vatNetDue } from "@/lib/data/queries";
 import { corpTax } from "@/lib/tax/uk-corp-tax";
 import type { TaxBreakdown } from "@/lib/tax/uk-income-tax";
 import type { TikTokAccount } from "@/lib/data/types";
-
-/** Affiliate `revenue` in the seed data is a monthly figure. */
-const MONTHS_PER_QUARTER = 3;
+import {
+  getTikTokDashboardModel,
+  tiktokAffiliatesFromAccounts,
+  tiktokUploadsInQuarter,
+} from "@/lib/tiktok/dashboard";
+import { hasAffiliateAccounts } from "@/lib/tiktok/accounts";
+import { getTikTokUploads } from "@/lib/tiktok/store";
 
 /** Net-profit margin assumed on company affiliate turnover (after ad spend, tools, fees). */
 export const COMPANY_PROFIT_MARGIN = 0.72;
@@ -37,25 +37,18 @@ export interface AccountRevenue {
   handle: string;
   niche: string;
   payTo: TikTokAccount["payTo"];
-  /** Revenue for the quarter (monthly seed × 3). */
   quarter: number;
-  /** Share of total quarter revenue, 0–1. */
   share: number;
 }
 
 export interface ReserveLine {
   id: "corp" | "personal" | "vat";
   label: string;
-  /** Amount we suggest setting aside this quarter. */
   amount: number;
-  /** Plain-language basis for the number. */
   basis: string;
-  /** Current balance already reserved for this liability (0 if none). */
   reserved: number;
-  /** reserved / amount, clamped at the call site for display. */
   coverage: number;
   accent: string;
-  /** Optional account this is reserved in. */
   accountName?: string;
 }
 
@@ -80,45 +73,77 @@ function ukQuarterLabel(now = new Date()): string {
   return `Q${q} ${now.getFullYear()}`;
 }
 
-export function getTaxClarity(now = new Date()): TaxClarity {
-  const perAccountRaw = tiktokAccounts.map((a) => ({
-    id: a.id,
-    handle: a.handle,
-    niche: a.niche,
-    payTo: a.payTo,
-    quarter: a.revenue * MONTHS_PER_QUARTER,
-  }));
+function fromUploads(now = new Date()): Omit<TaxClarity, "lines"> & { linesInputs: { corpReserveBal: number; vatReserveBal: number } } | null {
+  const model = getTikTokDashboardModel();
+  if (!model) return null;
 
-  const totalRevenue = perAccountRaw.reduce((s, a) => s + a.quarter, 0);
-  const perAccount: AccountRevenue[] = perAccountRaw
-    .map((a) => ({ ...a, share: totalRevenue === 0 ? 0 : a.quarter / totalRevenue }))
+  const inQuarter = tiktokUploadsInQuarter(now);
+  const source = inQuarter.length > 0 ? inQuarter : getTikTokUploads().slice(0, 3);
+  const periodLabel =
+    inQuarter.length > 0 ? ukQuarterLabel(now) : `${model.latest.periodLabel} (uploaded)`;
+
+  let companyRevenue = 0;
+  let personalRevenue = 0;
+
+  for (const upload of source) {
+    companyRevenue += upload.summary.company.revenue;
+    personalRevenue += upload.summary.personal.revenue;
+  }
+
+  const totalRevenue = companyRevenue + personalRevenue;
+  const affiliates = tiktokAffiliatesFromAccounts();
+  const perAccount: AccountRevenue[] = affiliates
+    .filter((a) => a.revenue > 0)
+    .map((a) => ({
+      id: a.id,
+      handle: a.handle,
+      niche: a.niche,
+      payTo: a.payTo,
+      quarter: a.revenue,
+      share: totalRevenue === 0 ? 0 : a.revenue / totalRevenue,
+    }))
     .sort((a, b) => b.quarter - a.quarter);
 
-  const companyRevenue = perAccount
-    .filter((a) => a.payTo === "company")
-    .reduce((s, a) => s + a.quarter, 0);
-  const personalRevenue = totalRevenue - companyRevenue;
-
-  // --- Company: Corporation Tax on profit ---
   const companyProfit = companyRevenue * COMPANY_PROFIT_MARGIN;
-  // Use the tiered engine on the annualised profit to find the effective rate.
   const corpRate = corpTax(companyProfit * 4).rate;
   const corpReserve = companyProfit * corpRate;
 
-  // --- Company: VAT (output less estimated input) ---
   const outputVat = companyRevenue * VAT_RATE;
   const vatDue = outputVat * (1 - INPUT_VAT_RATIO);
-
-  // --- Personal: marginal Income Tax set-aside ---
   const personalReserve = personalRevenue * PERSONAL_RESERVE_RATE;
-
   const totalReserve = corpReserve + personalReserve + vatDue;
   const netAfterTax = totalRevenue - totalReserve;
 
-  const vatReserveBal = accounts.find((a) => a.id === "tide-vat")?.balance ?? 0;
-  const corpReserveBal = accounts.find((a) => a.id === "tide-tax")?.balance ?? 0;
+  return {
+    quarterLabel: periodLabel,
+    totalRevenue,
+    companyRevenue,
+    personalRevenue,
+    companyProfit,
+    perAccount,
+    corpReserve,
+    corpRate,
+    personalReserve,
+    vatDue,
+    totalReserve,
+    netAfterTax,
+    linesInputs: {
+      vatReserveBal: accounts.find((a) => a.id === "tide-vat")?.balance ?? 0,
+      corpReserveBal: accounts.find((a) => a.id === "tide-tax")?.balance ?? 0,
+    },
+  };
+}
 
-  const lines: ReserveLine[] = [
+function buildLines(
+  corpReserve: number,
+  corpRate: number,
+  companyProfit: number,
+  vatDue: number,
+  personalReserve: number,
+  corpReserveBal: number,
+  vatReserveBal: number,
+): ReserveLine[] {
+  return [
     {
       id: "corp",
       label: "Corporation Tax Reserve",
@@ -149,20 +174,99 @@ export function getTaxClarity(now = new Date()): TaxClarity {
       accent: "#38bdf8",
     },
   ];
+}
 
+export function getTaxClarity(now = new Date()): TaxClarity {
+  const fromReal = fromUploads(now);
+  if (fromReal) {
+    const lines = buildLines(
+      fromReal.corpReserve,
+      fromReal.corpRate,
+      fromReal.companyProfit,
+      fromReal.vatDue,
+      fromReal.personalReserve,
+      fromReal.linesInputs.corpReserveBal,
+      fromReal.linesInputs.vatReserveBal,
+    );
+    return { ...fromReal, lines };
+  }
+
+  // Demo fallback when no uploads yet and no accounts configured
+  if (!hasAffiliateAccounts()) {
+    const MONTHS_PER_QUARTER = 3;
+    const perAccountRaw = tiktokAccounts.map((a) => ({
+      id: a.id,
+      handle: a.handle,
+      niche: a.niche,
+      payTo: a.payTo,
+      quarter: a.revenue * MONTHS_PER_QUARTER,
+    }));
+
+    const totalRevenue = perAccountRaw.reduce((s, a) => s + a.quarter, 0);
+    const perAccount: AccountRevenue[] = perAccountRaw
+      .map((a) => ({ ...a, share: totalRevenue === 0 ? 0 : a.quarter / totalRevenue }))
+      .sort((a, b) => b.quarter - a.quarter);
+
+    const companyRevenue = perAccount.filter((a) => a.payTo === "company").reduce((s, a) => s + a.quarter, 0);
+    const personalRevenue = totalRevenue - companyRevenue;
+    const companyProfit = companyRevenue * COMPANY_PROFIT_MARGIN;
+    const corpRate = corpTax(companyProfit * 4).rate;
+    const corpReserve = companyProfit * corpRate;
+    const outputVat = companyRevenue * VAT_RATE;
+    const vatDue = outputVat * (1 - INPUT_VAT_RATIO);
+    const personalReserve = personalRevenue * PERSONAL_RESERVE_RATE;
+    const totalReserve = corpReserve + personalReserve + vatDue;
+    const netAfterTax = totalRevenue - totalReserve;
+
+    const lines = buildLines(
+      corpReserve,
+      corpRate,
+      companyProfit,
+      vatDue,
+      personalReserve,
+      accounts.find((a) => a.id === "tide-tax")?.balance ?? 0,
+      accounts.find((a) => a.id === "tide-vat")?.balance ?? 0,
+    );
+
+    return {
+      quarterLabel: ukQuarterLabel(now),
+      totalRevenue,
+      companyRevenue,
+      personalRevenue,
+      companyProfit,
+      perAccount,
+      corpReserve,
+      corpRate,
+      personalReserve,
+      vatDue,
+      totalReserve,
+      netAfterTax,
+      lines,
+    };
+  }
+
+  // Accounts exist but no uploads yet — return zeroed clarity
+  const lines = buildLines(0, 0, 0, 0, 0, 0, 0);
   return {
     quarterLabel: ukQuarterLabel(now),
-    totalRevenue,
-    companyRevenue,
-    personalRevenue,
-    companyProfit,
-    perAccount,
-    corpReserve,
-    corpRate,
-    personalReserve,
-    vatDue,
-    totalReserve,
-    netAfterTax,
+    totalRevenue: 0,
+    companyRevenue: 0,
+    personalRevenue: 0,
+    companyProfit: 0,
+    perAccount: tiktokAffiliatesFromAccounts().map((a) => ({
+      id: a.id,
+      handle: a.handle,
+      niche: a.niche,
+      payTo: a.payTo,
+      quarter: 0,
+      share: 0,
+    })),
+    corpReserve: 0,
+    corpRate: 0,
+    personalReserve: 0,
+    vatDue: 0,
+    totalReserve: 0,
+    netAfterTax: 0,
     lines,
   };
 }

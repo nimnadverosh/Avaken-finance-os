@@ -34,10 +34,16 @@ import { corpTax, type CorpTaxBreakdown } from "@/lib/tax/uk-corp-tax";
 import { ukPersonalTax, type TaxBreakdown } from "@/lib/tax/uk-income-tax";
 import {
   getTikTokDashboardModel,
+  tiktokAffiliatesFromAccounts,
+  tiktokCashflowSeries,
+  tiktokExpenseBreakdown,
   tiktokInsights,
+  tiktokLatestNet,
+  tiktokLatestRevenue,
   tiktokRevenueSeries,
-  tiktokScaledAffiliates,
 } from "@/lib/tiktok/dashboard";
+import { hasAffiliateAccounts } from "@/lib/tiktok/accounts";
+import { hasTikTokUploads } from "@/lib/tiktok/store";
 import { clampDelta } from "@/lib/tiktok/model";
 
 const VAT_RATE = 0.2;
@@ -108,29 +114,11 @@ export function netWorth(entity: Entity): number {
 
 /* ---- Revenue / expense series, entity aware ---- */
 export function getRevenueSeries(entity: Entity): SeriesPoint[] {
-  // When monthly TikTok reports have been uploaded, drive the whole revenue
-  // picture from them (smart-adjusted, entity-split) instead of the seed series.
   const model = getTikTokDashboardModel();
   if (model) {
     if (entity === "avaken") return tiktokRevenueSeries(model, "avaken");
-    if (entity === "personal") {
-      // Personal TikTok share on top of a steady salary/other-income baseline.
-      const PERSONAL_BASELINE_REVENUE = 1200;
-      const PERSONAL_BASELINE_EXPENSE = 900;
-      return tiktokRevenueSeries(model, "personal").map((p) => {
-        const revenue = p.revenue! + PERSONAL_BASELINE_REVENUE;
-        const expenses = p.expenses! + PERSONAL_BASELINE_EXPENSE;
-        return { label: p.label, revenue, expenses, net: revenue - expenses };
-      });
-    }
-    const av = getRevenueSeries("avaken");
-    const pe = getRevenueSeries("personal");
-    return av.map((p, i) => ({
-      label: p.label,
-      revenue: p.revenue! + pe[i].revenue!,
-      expenses: p.expenses! + pe[i].expenses!,
-      net: p.net! + pe[i].net!,
-    }));
+    if (entity === "personal") return tiktokRevenueSeries(model, "personal");
+    return tiktokRevenueSeries(model, "consolidated");
   }
 
   if (entity === "avaken") return revenueSeries;
@@ -155,6 +143,13 @@ export function getRevenueSeries(entity: Entity): SeriesPoint[] {
 }
 
 export function getCashflowSeries(entity: Entity): SeriesPoint[] {
+  const model = getTikTokDashboardModel();
+  if (model) {
+    if (entity === "avaken") return tiktokCashflowSeries(model, "avaken");
+    if (entity === "personal") return tiktokCashflowSeries(model, "personal");
+    return tiktokCashflowSeries(model, "consolidated");
+  }
+
   if (entity === "avaken") return cashflowSeries;
   if (entity === "personal") {
     const rev = getRevenueSeries("personal");
@@ -173,6 +168,16 @@ export function getNetWorthSeries(): SeriesPoint[] {
 }
 
 export function getExpenseBreakdown(entity: Entity): CategorySlice[] {
+  const model = getTikTokDashboardModel();
+  if (model) {
+    // Earnings-type mix comes from the latest upload; only show when that month
+    // has income for the active entity (or always on consolidated).
+    if (entity === "consolidated") return tiktokExpenseBreakdown(model);
+    if (entity === "personal" && model.latest.personal.revenue > 0) return tiktokExpenseBreakdown(model);
+    if (entity === "avaken" && model.latest.company.revenue > 0) return tiktokExpenseBreakdown(model);
+    return [];
+  }
+
   if (entity === "personal") return personalExpenseBreakdown;
   if (entity === "avaken") return avakenExpenseBreakdown;
   // merge by name
@@ -196,8 +201,12 @@ export function vatNetDue(): number {
 }
 
 /* ---- Tax ---- */
-/** Avaken FY profit (rolling 12m of mock series). Real engine will use the company's accounting period. */
+/** Avaken FY profit — from uploaded TikTok months when available, else mock. */
 export function avakenAnnualProfit(): number {
+  const model = getTikTokDashboardModel();
+  if (model) {
+    return sum(tiktokRevenueSeries(model, "avaken").map((r) => r.net!));
+  }
   return sum(revenueSeries.map((r) => r.net!));
 }
 
@@ -257,14 +266,19 @@ export function monthlySubscriptionSpend(entity: Entity): number {
 }
 
 /* ---- Affiliate ---- */
-/** The six TikTok accounts, rescaled to the latest upload's company revenue when present. */
+/** Registered TikTok accounts with real upload data, or seed demo accounts only when nothing configured. */
 function effectiveAffiliates(): TikTokAccount[] {
-  const model = getTikTokDashboardModel();
-  return model ? tiktokScaledAffiliates(model) : tiktokAccounts;
+  if (hasTikTokUploads() || hasAffiliateAccounts()) {
+    return tiktokAffiliatesFromAccounts();
+  }
+  return tiktokAccounts;
 }
 
 export function affiliateRevenue(): number {
-  return sum(effectiveAffiliates().map((t) => t.revenue));
+  const model = getTikTokDashboardModel();
+  if (model) return tiktokLatestRevenue(model, "consolidated");
+  const affiliates = effectiveAffiliates();
+  return sum(affiliates.map((t) => t.revenue));
 }
 
 export function topAffiliates(limit = 6): TikTokAccount[] {
@@ -370,59 +384,105 @@ export function getAuditLog(entity: Entity, limit = 20): AuditEntry[] {
 
 /* ---- Insights ---- */
 export function getInsights(entity: Entity, limit = 4): Insight[] {
-  // Surface freshly-derived TikTok insights first when reports are uploaded.
   const model = getTikTokDashboardModel();
-  const dynamic = model && entity !== "personal" ? tiktokInsights(model) : [];
+  if (model) {
+    return tiktokInsights(model, entity)
+      .filter((i) => {
+        if (entity === "personal") return i.tag !== "VAT";
+        if (entity === "avaken") return i.tag !== "Tax";
+        return true;
+      })
+      .slice(0, limit);
+  }
 
   const filtered = insights.filter((i) => {
     if (entity === "consolidated") return true;
     if (entity === "personal") return i.tag === "Subscriptions";
     return true;
   });
-  return [...dynamic, ...filtered].slice(0, limit);
+  return filtered.slice(0, limit);
 }
 
 /* ---- KPI deck for dashboard ---- */
 export function getKpis(entity: Entity): Kpi[] {
+  const model = getTikTokDashboardModel();
   const rev = getRevenueSeries(entity);
-  const last = rev[rev.length - 1];
-  const prev = rev[rev.length - 2];
-  // Clamp to a sane band so a breakout upload month (small base → huge %) reads realistically.
-  const revDelta = clampDelta(prev.revenue ? ((last.revenue! - prev.revenue!) / prev.revenue!) * 100 : 0);
-  const netDelta = clampDelta(prev.net ? ((last.net! - prev.net!) / prev.net!) * 100 : 0);
+
+  let lastRevenue: number;
+  let lastNet: number;
+  let revDelta: number;
+  let netDelta: number;
+  let revSpark: number[];
+  let netSpark: number[];
+  let revenueSub = "vs last month";
+
+  if (model) {
+    lastRevenue = tiktokLatestRevenue(model, entity);
+    lastNet = tiktokLatestNet(model, entity);
+    const prevRevenue =
+      model.previous
+        ? entity === "avaken"
+          ? model.previous.company.revenue
+          : entity === "personal"
+            ? model.previous.personal.revenue
+            : model.previous.grossRevenue
+        : 0;
+    const prevNet =
+      model.previous
+        ? entity === "avaken"
+          ? model.previous.company.netProfit
+          : entity === "personal"
+            ? model.previous.personal.netProfit
+            : model.previous.netProfit
+        : 0;
+    revDelta = clampDelta(prevRevenue ? ((lastRevenue - prevRevenue) / prevRevenue) * 100 : 0);
+    netDelta = clampDelta(prevNet ? ((lastNet - prevNet) / prevNet) * 100 : 0);
+    revSpark = rev.map((p) => p.revenue!);
+    netSpark = rev.map((p) => p.net!);
+    revenueSub = `${model.latest.periodLabel} · uploaded`;
+  } else {
+    const last = rev[rev.length - 1];
+    const prev = rev[rev.length - 2];
+    lastRevenue = last.revenue!;
+    lastNet = last.net!;
+    revDelta = clampDelta(prev.revenue ? ((last.revenue! - prev.revenue!) / prev.revenue!) * 100 : 0);
+    netDelta = clampDelta(prev.net ? ((last.net! - prev.net!) / prev.net!) * 100 : 0);
+    revSpark = rev.slice(-7).map((p) => p.revenue!);
+    netSpark = rev.slice(-7).map((p) => p.net!);
+  }
 
   const cash = cashBalance(entity);
   const nw = netWorth(entity);
   const subs = monthlySubscriptionSpend(entity);
   const dailySnapshot = getDailyFinancialSnapshot();
 
-  const revSpark = rev.slice(-7).map((p) => p.revenue!);
-  const netSpark = rev.slice(-7).map((p) => p.net!);
   const nwSpark = (entity === "consolidated"
     ? netWorthSeries.map((p) => p.personal! + p.avaken!)
     : netWorthSeries.map((p) => (entity === "personal" ? p.personal! : p.avaken!))
   ).slice(-7);
 
+  const marginPct = lastRevenue > 0 ? Math.round((lastNet / lastRevenue) * 100) : 0;
+
   const base: Kpi[] = [
     {
       id: "revenue",
-      label: entity === "personal" ? "Income (MTD)" : "Revenue (MTD)",
-      value: last.revenue!,
+      label: entity === "personal" ? "TikTok income" : "TikTok revenue",
+      value: lastRevenue,
       format: "currency",
       delta: revDelta,
       spark: revSpark,
       accent: "#10b981",
-      sub: "vs last month",
+      sub: revenueSub,
     },
     {
       id: "net",
-      label: "Net Profit (MTD)",
-      value: last.net!,
+      label: "Net profit",
+      value: lastNet,
       format: "currency",
       delta: netDelta,
       spark: netSpark,
       accent: "#34d399",
-      sub: `${Math.round((last.net! / last.revenue!) * 100)}% margin`,
+      sub: lastRevenue > 0 ? `${marginPct}% margin` : "after est. costs",
     },
     {
       id: "cash",

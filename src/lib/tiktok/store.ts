@@ -1,22 +1,21 @@
 /**
  * Client-side persistence for monthly TikTok uploads.
  *
- * Mirrors the architecture of `src/lib/data/daily-updates.ts`:
- *   • module-level cache, hydrated lazily from localStorage
- *   • a window CustomEvent so the dashboard re-renders in real time
- *     (wired into `useMockDataVersion`)
- *   • pure getters the query layer reads from
- *
- * Stored data is keyed by month — re-uploading the same month replaces it.
- * Attribution (company vs personal) is derived automatically from each report's
- * month on load and save — no manual split configuration.
+ * Uploads are keyed by account + month — each affiliate account can have one
+ * report per calendar month. Re-uploading the same month for the same account
+ * replaces the previous file.
  */
 
+import type { TikTokAccount } from "@/lib/data/types";
+import {
+  ensureAccountFromCreator,
+  getAffiliateAccountById,
+} from "./accounts";
 import type { ParsedTikTokReport, TikTokUploadRecord } from "./types";
 import { buildMonthlySummary } from "./model";
 
 const UPLOADS_KEY = "avaken-tiktok-uploads";
-const MAX_UPLOADS = 36; // three years of monthly reports
+const MAX_UPLOADS = 36 * 8; // up to 8 accounts × 3 years
 
 /** Fired whenever uploads change. */
 export const TIKTOK_UPLOADS_CHANGED = "avaken-tiktok-uploads-changed";
@@ -36,14 +35,13 @@ function hydrate(): void {
     if (rawUploads) {
       const parsed = JSON.parse(rawUploads) as unknown;
       if (Array.isArray(parsed)) {
-        // Re-model on load so attribution rules stay current (e.g. Jul 2026 cutoff).
         uploads = parsed.filter(isUploadRecord).map(remodelUpload);
+        migrateOrphanUploads();
       }
     }
   } catch {
     uploads = [];
   }
-  // Drop legacy split config key — attribution is now automatic.
   localStorage.removeItem("avaken-tiktok-split");
 }
 
@@ -76,6 +74,24 @@ function remodelUpload(record: TikTokUploadRecord): TikTokUploadRecord {
   return { ...record, split: summary.split, summary };
 }
 
+/** Assign legacy uploads (no accountId) to an account derived from creator name. */
+function migrateOrphanUploads(): void {
+  const orphans = uploads.filter((u) => !u.accountId);
+  if (orphans.length === 0) return;
+
+  for (const orphan of orphans) {
+    const payTo: TikTokAccount["payTo"] =
+      orphan.summary.split.company >= 1 ? "company" : "personal";
+    const account = ensureAccountFromCreator(orphan.report.creatorName, payTo);
+    orphan.accountId = account.id;
+  }
+  persistUploads();
+}
+
+function uploadKey(accountId: string, monthKey: string): string {
+  return `${accountId}::${monthKey}`;
+}
+
 /** Uploads sorted newest month first. */
 function sortedByMonth(list: TikTokUploadRecord[]): TikTokUploadRecord[] {
   return [...list].sort((a, b) => b.summary.monthKey.localeCompare(a.summary.monthKey));
@@ -85,15 +101,17 @@ function sortedByMonth(list: TikTokUploadRecord[]): TikTokUploadRecord[] {
 /*  Uploads CRUD                                                       */
 /* ------------------------------------------------------------------ */
 
-export function getTikTokUploads(): TikTokUploadRecord[] {
+export function getTikTokUploads(accountId?: string): TikTokUploadRecord[] {
   hydrate();
-  return sortedByMonth(uploads);
+  const list = accountId ? uploads.filter((u) => u.accountId === accountId) : uploads;
+  return sortedByMonth(list);
 }
 
 /** Most recent month on record, or null if nothing uploaded yet. */
-export function getLatestTikTokUpload(): TikTokUploadRecord | null {
+export function getLatestTikTokUpload(accountId?: string): TikTokUploadRecord | null {
   hydrate();
-  return sortedByMonth(uploads)[0] ?? null;
+  const list = accountId ? uploads.filter((u) => u.accountId === accountId) : uploads;
+  return sortedByMonth(list)[0] ?? null;
 }
 
 export function hasTikTokUploads(): boolean {
@@ -102,27 +120,36 @@ export function hasTikTokUploads(): boolean {
 }
 
 /**
- * Persist a freshly-parsed report. Attribution is derived from the report month.
- * Replaces any existing upload for the same month.
+ * Persist a freshly-parsed report for a specific affiliate account.
+ * Replaces any existing upload for the same account + month.
  */
 export function saveTikTokUpload(
   report: ParsedTikTokReport,
   fileName: string,
+  accountId: string,
 ): TikTokUploadRecord {
   hydrate();
+  if (!getAffiliateAccountById(accountId)) {
+    throw new Error("Select a valid affiliate account before importing.");
+  }
+
   const summary = buildMonthlySummary(report);
+  const key = uploadKey(accountId, summary.monthKey);
   const record: TikTokUploadRecord = {
-    id: `tiktok-${summary.monthKey}-${Date.now()}`,
+    id: `tiktok-${key}-${Date.now()}`,
+    accountId,
     fileName,
     uploadedAt: new Date().toISOString(),
     split: summary.split,
     report,
     summary,
   };
-  uploads = [record, ...uploads.filter((u) => u.summary.monthKey !== summary.monthKey)].slice(
-    0,
-    MAX_UPLOADS,
-  );
+
+  uploads = [
+    record,
+    ...uploads.filter((u) => uploadKey(u.accountId, u.summary.monthKey) !== key),
+  ].slice(0, MAX_UPLOADS);
+
   persistUploads();
   notifyChanged();
   return record;
@@ -138,6 +165,19 @@ export function deleteTikTokUpload(id: string): void {
   }
 }
 
+/** Delete all uploads belonging to an affiliate account. */
+export function deleteTikTokUploadsForAccount(accountId: string): number {
+  hydrate();
+  const before = uploads.length;
+  uploads = uploads.filter((u) => u.accountId !== accountId);
+  const removed = before - uploads.length;
+  if (removed > 0) {
+    persistUploads();
+    notifyChanged();
+  }
+  return removed;
+}
+
 export function clearTikTokUploads(): number {
   hydrate();
   const removed = uploads.length;
@@ -145,4 +185,10 @@ export function clearTikTokUploads(): number {
   persistUploads();
   notifyChanged();
   return removed;
+}
+
+/** Resolve account display label for an upload row. */
+export function uploadAccountLabel(record: TikTokUploadRecord): string {
+  const account = getAffiliateAccountById(record.accountId);
+  return account?.handle ?? record.report.creatorName ?? "Unknown account";
 }

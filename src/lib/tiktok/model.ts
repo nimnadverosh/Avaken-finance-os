@@ -142,3 +142,106 @@ export function monthOverMonthDelta(current: number, previous: number): number {
   if (!previous) return current > 0 ? SMART_ADJUSTMENT.maxDeltaPct : 0;
   return clampDelta(((current - previous) / Math.abs(previous)) * 100);
 }
+
+function mergeGroupTotals(
+  lists: TikTokMonthlySummary["byType"][],
+): TikTokMonthlySummary["byType"] {
+  const map = new Map<string, { revenue: number; orders: number }>();
+  for (const list of lists) {
+    for (const item of list) {
+      const existing = map.get(item.name);
+      if (existing) {
+        existing.revenue += item.revenue;
+        existing.orders += item.orders;
+      } else {
+        map.set(item.name, { revenue: item.revenue, orders: item.orders });
+      }
+    }
+  }
+  return [...map.entries()]
+    .map(([name, data]) => ({ name, revenue: round2(data.revenue), orders: data.orders }))
+    .sort((a, b) => b.revenue - a.revenue);
+}
+
+function mergeDaily(
+  lists: TikTokMonthlySummary["daily"][],
+): TikTokMonthlySummary["daily"] {
+  const map = new Map<string, { label: string; revenue: number }>();
+  for (const list of lists) {
+    for (const point of list) {
+      const existing = map.get(point.date);
+      if (existing) existing.revenue += point.revenue;
+      else map.set(point.date, { label: point.label, revenue: point.revenue });
+    }
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, data]) => ({
+      date,
+      label: data.label,
+      revenue: round2(data.revenue),
+    }));
+}
+
+/** Sum multiple account-month summaries into one consolidated month. */
+export function mergeMonthlySummaries(summaries: TikTokMonthlySummary[]): TikTokMonthlySummary | null {
+  if (summaries.length === 0) return null;
+  const first = summaries[0]!;
+  if (summaries.length === 1) return first;
+
+  const grossRevenue = round2(summaries.reduce((s, x) => s + x.grossRevenue, 0));
+  const estimatedExpenses = round2(summaries.reduce((s, x) => s + x.estimatedExpenses, 0));
+  const netProfit = round2(summaries.reduce((s, x) => s + x.netProfit, 0));
+  const orderCount = summaries.reduce((s, x) => s + x.orderCount, 0);
+  const outputVat = round2(summaries.reduce((s, x) => s + x.outputVat, 0));
+  const marginPct = grossRevenue > 0 ? round2((netProfit / grossRevenue) * 100) : 0;
+  const avgOrderValue = orderCount > 0 ? round2(grossRevenue / orderCount) : 0;
+
+  const companyRevenue = round2(summaries.reduce((s, x) => s + x.company.revenue, 0));
+  const personalRevenue = round2(summaries.reduce((s, x) => s + x.personal.revenue, 0));
+  const companyNet = round2(summaries.reduce((s, x) => s + x.company.netProfit, 0));
+  const personalNet = round2(summaries.reduce((s, x) => s + x.personal.netProfit, 0));
+  const companyOrders = summaries.reduce((s, x) => s + x.company.orders, 0);
+  const personalOrders = summaries.reduce((s, x) => s + x.personal.orders, 0);
+  const companyVat = round2(summaries.reduce((s, x) => s + x.company.vatOnSales, 0));
+
+  const totalSplit = companyRevenue + personalRevenue;
+  const split: SplitConfig =
+    totalSplit === 0
+      ? first.split
+      : {
+          company: round2(companyRevenue / totalSplit),
+          personal: round2(personalRevenue / totalSplit),
+        };
+
+  return {
+    monthKey: first.monthKey,
+    shortMonth: first.shortMonth,
+    periodLabel: first.periodLabel,
+    year: first.year,
+    month: first.month,
+    grossRevenue,
+    netProfit,
+    estimatedExpenses,
+    marginPct,
+    orderCount,
+    avgOrderValue,
+    outputVat,
+    split,
+    company: {
+      revenue: companyRevenue,
+      netProfit: companyNet,
+      orders: companyOrders,
+      vatOnSales: companyVat,
+    },
+    personal: {
+      revenue: personalRevenue,
+      netProfit: personalNet,
+      orders: personalOrders,
+      vatOnSales: 0,
+    },
+    byType: mergeGroupTotals(summaries.map((s) => s.byType)),
+    topBrands: mergeGroupTotals(summaries.map((s) => s.topBrands)),
+    daily: mergeDaily(summaries.map((s) => s.daily)),
+  };
+}

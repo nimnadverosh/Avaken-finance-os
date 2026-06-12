@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { attributionLabel } from "@/lib/tiktok/model";
+import { affiliateLabelForUpload } from "@/lib/tiktok/dashboard";
 import { deleteTikTokUpload, getTikTokUploads } from "@/lib/tiktok/store";
 
 /** Historical list of every stored monthly upload, with per-row delete. */
@@ -30,8 +31,9 @@ export function TikTokUploadHistory() {
         {uploads.map((u) => (
           <div key={u.id} className="flex items-center justify-between gap-3 px-5 py-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold">{u.summary.periodLabel}</p>
+                <Badge tone="info">{affiliateLabelForUpload(u)}</Badge>
                 <Badge tone={u.split.company >= 1 ? "positive" : "info"}>
                   {attributionLabel(u.split)}
                 </Badge>

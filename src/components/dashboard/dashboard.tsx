@@ -33,6 +33,7 @@ import {
   recentTransactions,
   topAffiliates,
 } from "@/lib/data/queries";
+import { getTikTokDashboardModel } from "@/lib/tiktok/dashboard";
 
 export function Dashboard() {
   const { entity, config } = useEntity();
