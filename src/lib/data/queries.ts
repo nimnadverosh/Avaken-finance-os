@@ -52,6 +52,7 @@ import {
   type TikTokPeriodSelection,
 } from "@/lib/tiktok/period";
 import { clampDelta } from "@/lib/tiktok/model";
+import { getAffiliatePortfolioInsights } from "@/lib/tiktok/affiliate-insights";
 
 export type { TikTokPeriodSelection };
 export { periodLabel, listUploadedMonths } from "@/lib/tiktok/period";
@@ -445,13 +446,15 @@ export function getAuditLog(entity: Entity, limit = 20): AuditEntry[] {
 export function getInsights(entity: Entity, limit = 4): Insight[] {
   const model = getTikTokDashboardModel();
   if (model) {
-    return tiktokInsights(model, entity)
-      .filter((i) => {
-        if (entity === "personal") return i.tag !== "VAT";
-        if (entity === "avaken") return i.tag !== "Tax";
-        return true;
-      })
-      .slice(0, limit);
+    const base = tiktokInsights(model, entity).filter((i) => {
+      if (entity === "personal") return i.tag !== "VAT";
+      if (entity === "avaken") return i.tag !== "Tax";
+      return true;
+    });
+    const portfolio = getAffiliatePortfolioInsights();
+    const seen = new Set(base.map((i) => i.id));
+    const merged = [...base, ...portfolio.filter((i) => !seen.has(i.id))];
+    return merged.slice(0, limit);
   }
 
   if (isRealDataMode()) return [];

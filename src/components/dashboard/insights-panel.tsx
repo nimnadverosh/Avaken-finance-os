@@ -31,16 +31,24 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
           </div>
           <div>
             <h3 className="text-sm font-semibold tracking-tight">AI insights</h3>
-            <p className="text-[11px] text-subtle">Updated 2 min ago</p>
+            <p className="text-[11px] text-subtle">From uploaded TikTok data</p>
           </div>
         </div>
-        <span className="rounded-full bg-violet/10 px-2 py-0.5 text-[10px] font-medium text-violet ring-1 ring-violet/20">
-          {insights.length} new
-        </span>
+        {insights.length > 0 && (
+          <span className="rounded-full bg-violet/10 px-2 py-0.5 text-[10px] font-medium text-violet ring-1 ring-violet/20">
+            {insights.length} active
+          </span>
+        )}
       </div>
 
-      <div className="divide-y divide-border/60">
-        {insights.map((ins) => {
+      {insights.length === 0 ? (
+        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+          Upload TikTok earnings reports to see insights here, or open the Affiliates page for the full
+          insights dashboard.
+        </div>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {insights.map((ins) => {
           const s = SEVERITY_STYLES[ins.severity];
           const Icon = s.icon;
           return (
@@ -68,7 +76,8 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </Card>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Upload } from "lucide-react";
+import { ChevronRight, Upload } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
@@ -12,12 +12,16 @@ import { PageHeader } from "./page-header";
 import { PeriodToggle, type Period } from "@/components/dashboard/period-toggle";
 import { MonthPicker } from "@/components/dashboard/month-picker";
 import { TikTokAccountManager } from "@/components/tiktok/tiktok-account-manager";
+import { AffiliateAccountDetail } from "@/components/affiliates/affiliate-account-detail";
+import { AffiliateInsightsSection } from "@/components/affiliates/affiliate-insights-panel";
 import { allAffiliates, listUploadedMonths, periodLabel } from "@/lib/data/queries";
+import { getAffiliatePortfolioInsights } from "@/lib/tiktok/affiliate-insights";
 import { hasTikTokUploads } from "@/lib/tiktok/store";
 import { hasAffiliateAccounts } from "@/lib/tiktok/accounts";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { TikTokPeriodSelection } from "@/lib/tiktok/period";
+import { cn } from "@/lib/utils";
 
 const STATUS_TONE = {
   scaling: "positive",
@@ -37,6 +41,7 @@ export function AffiliatesView() {
   const version = useMockDataVersion();
   const [period, setPeriod] = useState<Period>("all");
   const [monthKey, setMonthKey] = useState<string | undefined>();
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const uploadedMonths = useMemo(() => listUploadedMonths(), [version]);
 
   const selection: TikTokPeriodSelection = useMemo(
@@ -45,6 +50,7 @@ export function AffiliatesView() {
   );
 
   const accounts = useMemo(() => allAffiliates(selection), [version, selection]);
+  const portfolioInsights = useMemo(() => getAffiliatePortfolioInsights(), [version]);
   const hasRealData = hasAffiliateAccounts() || hasTikTokUploads();
   const withRevenue = accounts.filter((a) => a.revenue > 0);
   const periodRevenue = withRevenue.reduce((a, b) => a + b.revenue, 0);
@@ -80,6 +86,12 @@ export function AffiliatesView() {
         </div>
       )}
 
+      {hasTikTokUploads() && (
+        <div className="mb-6">
+          <AffiliateInsightsSection insights={portfolioInsights} />
+        </div>
+      )}
+
       <div className="mb-6">
         <TikTokAccountManager compact />
       </div>
@@ -108,8 +120,29 @@ export function AffiliatesView() {
           {accounts.map((a) => {
             const aov = a.orders > 0 ? a.revenue / a.orders : 0;
             const sharePct = periodRevenue > 0 ? (a.revenue / periodRevenue) * 100 : 0;
+            const hasData = a.revenue > 0 || (a.totalRevenue ?? 0) > 0;
             return (
-              <Card key={a.id} className="relative overflow-hidden p-5">
+              <Card
+                key={a.id}
+                role={hasData ? "button" : undefined}
+                tabIndex={hasData ? 0 : undefined}
+                onClick={hasData ? () => setSelectedAccountId(a.id) : undefined}
+                onKeyDown={
+                  hasData
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedAccountId(a.id);
+                        }
+                      }
+                    : undefined
+                }
+                className={cn(
+                  "relative overflow-hidden p-5 transition-colors",
+                  hasData &&
+                    "cursor-pointer hover:border-primary/30 hover:bg-white/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                )}
+              >
                 <div
                   className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full opacity-20 blur-3xl"
                   style={{ background: a.delta >= 0 ? "#10b981" : "#f43f5e" }}
@@ -126,7 +159,7 @@ export function AffiliatesView() {
                   )}
                 </div>
 
-                {a.revenue > 0 || (a.totalRevenue ?? 0) > 0 ? (
+                {hasData ? (
                   <>
                     <div className="mt-4 flex items-end justify-between">
                       <div>
@@ -170,14 +203,18 @@ export function AffiliatesView() {
 
                     <div className="mt-3 flex items-center justify-between text-[11px] text-subtle">
                       <span>{a.payTo === "company" ? "Avaken Ltd" : "Personal"} payout</span>
-                      <span>{sharePct.toFixed(1)}% of period</span>
+                      <span className="flex items-center gap-0.5 text-primary">
+                        View insights <ChevronRight className="size-3" />
+                      </span>
                     </div>
                   </>
                 ) : (
                   <div className="mt-4 rounded-xl border border-dashed border-border/60 p-4 text-center">
                     <p className="text-[11px] text-subtle">Upload a monthly report for this account</p>
                     <Button asChild variant="outline" size="sm" className="mt-2">
-                      <Link href="/import/tiktok">Upload</Link>
+                      <Link href="/import/tiktok" onClick={(e) => e.stopPropagation()}>
+                        Upload
+                      </Link>
                     </Button>
                   </div>
                 )}
@@ -185,6 +222,13 @@ export function AffiliatesView() {
             );
           })}
         </div>
+      )}
+
+      {selectedAccountId && (
+        <AffiliateAccountDetail
+          accountId={selectedAccountId}
+          onClose={() => setSelectedAccountId(null)}
+        />
       )}
     </div>
   );

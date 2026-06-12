@@ -6,6 +6,9 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "./page-header";
 import { useEntity } from "@/lib/entity-context";
 import { getInsights } from "@/lib/data/queries";
+import { getAffiliatePortfolioInsights } from "@/lib/tiktok/affiliate-insights";
+import { hasTikTokUploads } from "@/lib/tiktok/store";
+import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { cn } from "@/lib/utils";
 import type { Insight } from "@/lib/data/types";
 
@@ -17,7 +20,16 @@ const SEVERITY_STYLES = {
 
 export function InsightsView() {
   const { entity, config } = useEntity();
-  const all = getInsights(entity, 20);
+  const version = useMockDataVersion();
+  const all = useMemo(() => {
+    const base = getInsights(entity, 20);
+    if (hasTikTokUploads()) {
+      const portfolio = getAffiliatePortfolioInsights();
+      const seen = new Set(base.map((i) => i.id));
+      return [...base, ...portfolio.filter((i) => !seen.has(i.id))];
+    }
+    return base;
+  }, [entity, version]);
   const [filter, setFilter] = useState<Insight["severity"] | "all">("all");
   const filtered = useMemo(
     () => (filter === "all" ? all : all.filter((i) => i.severity === filter)),
