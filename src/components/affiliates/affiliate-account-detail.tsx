@@ -1,29 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ArrowLeft,
-  Building2,
-  ChevronRight,
-  Package,
-  Percent,
-  Receipt,
-  Sparkles,
-  TrendingUp,
-  User,
-  X,
-} from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { ArrowLeft, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sparkline } from "@/components/ui/sparkline";
+import { AffiliateInsightsSection } from "./affiliate-insights-panel";
+import {
+  TikTokLifetimePreview,
+  TikTokSummaryPreview,
+} from "@/components/tiktok/tiktok-summary-preview";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
-import { AffiliateInsightsList } from "./affiliate-insights-panel";
 import { getAffiliateAccountInsightBundles } from "@/lib/tiktok/affiliate-insights";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { attributionLabel } from "@/lib/tiktok/model";
+import { getTikTokUploads } from "@/lib/tiktok/store";
 import { cn } from "@/lib/utils";
 
-type Tab = "overview" | "monthly" | "alltime";
+type Tab = "monthly" | "alltime";
 
 export function AffiliateAccountDetail({
   accountId,
@@ -32,17 +25,20 @@ export function AffiliateAccountDetail({
 }: {
   accountId: string;
   onClose: () => void;
-  /** Inline = centered in page flow (like Excel upload preview). Modal = centered overlay. */
   layout?: "inline" | "modal";
 }) {
   const version = useMockDataVersion();
   const bundle = useMemo(() => getAffiliateAccountInsightBundles(accountId), [accountId, version]);
-  const [tab, setTab] = useState<Tab>("overview");
+  const uploads = useMemo(
+    () => getTikTokUploads(accountId).sort((a, b) => b.summary.monthKey.localeCompare(a.summary.monthKey)),
+    [accountId, version],
+  );
+  const [tab, setTab] = useState<Tab>("monthly");
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | undefined>();
 
   useEffect(() => {
-    if (bundle?.monthly[0]) setSelectedMonthKey(bundle.monthly[0].monthKey);
-  }, [bundle]);
+    if (uploads[0]) setSelectedMonthKey(uploads[0].summary.monthKey);
+  }, [uploads]);
 
   useEffect(() => {
     if (layout !== "modal") return;
@@ -63,56 +59,33 @@ export function AffiliateAccountDetail({
     }
   }, [accountId, layout]);
 
-  if (!bundle) return null;
+  if (!bundle || uploads.length === 0) return null;
 
-  const { handle, niche, metrics, allTime, monthly } = bundle;
-  const selectedMonth = monthly.find((m) => m.monthKey === selectedMonthKey) ?? monthly[0];
-  const isCompany = metrics.payTo === "company";
-  const accent = isCompany ? "#10b981" : "#38bdf8";
-  const PayIcon = isCompany ? Building2 : User;
+  const { handle, niche, allTime, monthly } = bundle;
+  const selectedUpload =
+    uploads.find((u) => u.summary.monthKey === selectedMonthKey) ?? uploads[0]!;
+  const selectedMonthInsights =
+    monthly.find((m) => m.monthKey === selectedUpload.summary.monthKey)?.insights ?? [];
 
-  const panel = (
-    <Card
-      className={cn(
-        "relative overflow-hidden border-primary/25 bg-card/90 backdrop-blur-xl",
-        layout === "modal"
-          ? "max-h-[min(90vh,900px)] shadow-2xl"
-          : "shadow-[0_8px_40px_-12px_rgba(16,185,129,0.15)]",
-      )}
-    >
-      <div
-        className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full opacity-15 blur-3xl"
-        style={{ background: accent }}
-      />
-
-      <div className="relative border-b border-border/60 px-5 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div
-              className="grid size-11 shrink-0 place-items-center rounded-2xl ring-1"
-              style={{ background: `${accent}22`, color: accent, boxShadow: `inset 0 0 0 1px ${accent}33` }}
-            >
-              <Sparkles className="size-5" />
-            </div>
-            <div>
-              <p className="text-lg font-semibold tracking-tight">{handle}</p>
-              <p className="text-sm text-muted-foreground">{niche}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Badge tone={isCompany ? "positive" : "info"}>
-                  {isCompany ? "Avaken Ltd" : "Personal"} payout
-                </Badge>
-                <Badge tone="info">
-                  {metrics.uploadCount} month{metrics.uploadCount === 1 ? "" : "s"} uploaded
-                </Badge>
-              </div>
-            </div>
+  const content = (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">{handle}</h2>
+            <Badge tone="info">{niche}</Badge>
+            <Badge tone="info">
+              {uploads.length} month{uploads.length === 1 ? "" : "s"} uploaded
+            </Badge>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            className="shrink-0 self-start"
-          >
+          <p className="mt-1 text-sm text-muted-foreground">
+            {tab === "monthly"
+              ? `${selectedUpload.report.creatorName || handle} · ${selectedUpload.report.lineCount} settlement lines · uploaded ${selectedUpload.fileName}`
+              : `Lifetime view across ${uploads.length} report${uploads.length === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
             {layout === "inline" ? (
               <>
                 <ArrowLeft className="size-3.5" /> Back to accounts
@@ -121,14 +94,18 @@ export function AffiliateAccountDetail({
               <X className="size-4" />
             )}
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/import/tiktok">
+              <Upload className="size-3.5" /> Upload report
+            </Link>
+          </Button>
         </div>
       </div>
 
-      <div className="relative flex shrink-0 justify-center gap-1 border-b border-border/60 px-5 py-2 sm:px-6">
+      <div className="flex justify-center gap-1 rounded-xl border border-border/60 bg-white/[0.02] p-1">
         {(
           [
-            ["overview", "Overview"],
-            ["monthly", "Monthly"],
+            ["monthly", "By month"],
             ["alltime", "All time"],
           ] as const
         ).map(([id, label]) => (
@@ -137,7 +114,7 @@ export function AffiliateAccountDetail({
             type="button"
             onClick={() => setTab(id)}
             className={cn(
-              "rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors",
+              "rounded-lg px-4 py-2 text-[12px] font-medium transition-colors",
               tab === id
                 ? "bg-white/[0.08] text-foreground ring-1 ring-white/10"
                 : "text-muted-foreground hover:text-foreground",
@@ -148,291 +125,68 @@ export function AffiliateAccountDetail({
         ))}
       </div>
 
-      <div className="relative max-h-[min(70vh,720px)] overflow-y-auto px-5 py-5 sm:px-6">
-        {tab === "overview" && (
-          <div className="mx-auto max-w-3xl space-y-5">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <MetricCard
-                icon={TrendingUp}
-                label="All-time gross"
-                value={formatCurrency(metrics.totalRevenue, { decimals: 2 })}
-                accent="#10b981"
-              />
-              <MetricCard
-                icon={Receipt}
-                label="All-time net"
-                value={formatCurrency(metrics.totalNet, { decimals: 2 })}
-                accent="#34d399"
-                sub={`${metrics.marginPct}% margin`}
-              />
-              <MetricCard
-                icon={Package}
-                label="Total orders"
-                value={formatNumber(metrics.totalOrders)}
-                accent="#a78bfa"
-              />
-              <MetricCard
-                icon={Percent}
-                label="Avg / month"
-                value={formatCurrency(metrics.avgMonthlyRevenue, { decimals: 0 })}
-                accent="#38bdf8"
-              />
-            </div>
-
-            <Card className="relative overflow-hidden p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="grid size-9 place-items-center rounded-xl"
-                    style={{ background: `${accent}22`, color: accent }}
-                  >
-                    <PayIcon className="size-4" />
-                  </span>
-                  <p className="text-sm font-semibold">Monthly trend</p>
-                </div>
-                <Sparkline
-                  data={monthly.map((m) => m.metrics.grossRevenue).reverse()}
-                  color={accent}
-                  width={100}
-                  height={32}
-                />
-              </div>
-              <div className="mt-3 space-y-1">
-                {monthly.map((m) => (
-                  <button
-                    key={m.monthKey}
-                    type="button"
-                    onClick={() => {
-                      setSelectedMonthKey(m.monthKey);
-                      setTab("monthly");
-                    }}
-                    className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors hover:bg-white/[0.04]"
-                  >
-                    <span className="text-subtle">{m.periodLabel}</span>
-                    <span className="flex items-center gap-1 tabular font-medium">
-                      {formatCurrency(m.metrics.grossRevenue, { decimals: 0 })}
-                      <ChevronRight className="size-3 text-subtle" />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </Card>
-
-            {metrics.topBrand && (
-              <Card className="p-4 text-center sm:text-left">
-                <p className="text-[11px] font-medium text-muted-foreground">Top brand (all time)</p>
-                <p className="mt-1 text-sm font-semibold">{metrics.topBrand.name}</p>
-                <p className="tabular mt-0.5 text-2xl font-semibold text-emerald">
-                  {formatCurrency(metrics.topBrand.revenue, { decimals: 2 })}
-                </p>
-                <p className="text-[11px] text-subtle">
-                  {metrics.topBrand.share.toFixed(1)}% of lifetime · {metrics.topBrand.orders} orders
-                </p>
-              </Card>
-            )}
-
-            <div>
-              <p className="mb-2 text-center text-[11px] font-medium uppercase tracking-wide text-subtle sm:text-left">
-                Latest insights
-              </p>
-              <AffiliateInsightsList
-                insights={[...allTime.slice(0, 2), ...(selectedMonth?.insights.slice(0, 2) ?? [])]}
-                compact
-              />
-            </div>
+      {tab === "monthly" && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            {uploads.map((u) => (
+              <button
+                key={u.summary.monthKey}
+                type="button"
+                onClick={() => setSelectedMonthKey(u.summary.monthKey)}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-[11px] font-medium ring-1 transition-colors",
+                  selectedUpload.summary.monthKey === u.summary.monthKey
+                    ? "bg-primary/15 text-primary ring-primary/30"
+                    : "bg-white/[0.03] text-muted-foreground ring-white/10 hover:text-foreground",
+                )}
+              >
+                {u.summary.periodLabel}
+              </button>
+            ))}
           </div>
-        )}
 
-        {tab === "monthly" && selectedMonth && (
-          <div className="mx-auto max-w-3xl space-y-5">
-            <select
-              value={selectedMonth.monthKey}
-              onChange={(e) => setSelectedMonthKey(e.target.value)}
-              className="h-10 w-full rounded-xl border border-border/60 bg-white/[0.03] px-3 text-sm outline-none focus:border-primary/40"
-            >
-              {monthly.map((m) => (
-                <option key={m.monthKey} value={m.monthKey}>
-                  {m.periodLabel}
-                </option>
-              ))}
-            </select>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <MetricCard
-                icon={TrendingUp}
-                label="Gross"
-                value={formatCurrency(selectedMonth.metrics.grossRevenue, { decimals: 2 })}
-                accent="#10b981"
-              />
-              <MetricCard
-                icon={Receipt}
-                label="Net"
-                value={formatCurrency(selectedMonth.metrics.netProfit, { decimals: 2 })}
-                accent="#34d399"
-                sub={`${selectedMonth.metrics.marginPct}% margin`}
-              />
-              <MetricCard
-                icon={Package}
-                label="Orders"
-                value={formatNumber(selectedMonth.metrics.orderCount)}
-                accent="#a78bfa"
-              />
-              <MetricCard
-                icon={Percent}
-                label="AOV"
-                value={formatCurrency(selectedMonth.metrics.avgOrderValue, { decimals: 2 })}
-                accent="#38bdf8"
-              />
-            </div>
-
-            {selectedMonth.metrics.byType.length > 0 && (
-              <Card className="p-4">
-                <p className="text-[11px] font-medium text-muted-foreground">Earnings type mix</p>
-                <div className="mt-3 space-y-2">
-                  {selectedMonth.metrics.byType.map((t) => (
-                    <BreakdownRow
-                      key={t.name}
-                      label={t.name}
-                      value={t.value}
-                      total={selectedMonth.metrics.grossRevenue}
-                      color={t.color}
-                    />
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {selectedMonth.metrics.topBrands.length > 0 && (
-              <Card className="p-4">
-                <p className="text-[11px] font-medium text-muted-foreground">Top brands</p>
-                <div className="mt-3 space-y-2">
-                  {selectedMonth.metrics.topBrands.map((b) => (
-                    <div key={b.name} className="flex items-center justify-between text-[11px]">
-                      <span className="truncate pr-2">{b.name}</span>
-                      <span className="tabular shrink-0 font-medium">
-                        {formatCurrency(b.revenue, { decimals: 0 })} · {b.orders} ord
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            <div>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-subtle">
-                Monthly insights
-              </p>
-              <AffiliateInsightsList insights={selectedMonth.insights} compact />
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold">Review {selectedUpload.summary.periodLabel}</h3>
+            <Badge tone={selectedUpload.summary.split.company >= 1 ? "positive" : "info"}>
+              100% {attributionLabel(selectedUpload.summary.split)}
+            </Badge>
           </div>
-        )}
 
-        {tab === "alltime" && (
-          <div className="mx-auto max-w-3xl space-y-5">
-            {metrics.earningTypeMix.length > 0 && (
-              <Card className="p-4">
-                <p className="text-[11px] font-medium text-muted-foreground">Lifetime earnings mix</p>
-                <div className="mt-3 space-y-2">
-                  {metrics.earningTypeMix.map((t) => (
-                    <BreakdownRow
-                      key={t.name}
-                      label={t.name}
-                      value={t.value}
-                      total={metrics.totalRevenue}
-                      color={t.color}
-                    />
-                  ))}
-                </div>
-              </Card>
-            )}
+          <TikTokSummaryPreview
+            summary={selectedUpload.summary}
+            report={selectedUpload.report}
+          />
 
-            {metrics.bestMonth && (
-              <Card className="p-4 text-center">
-                <p className="text-[11px] font-medium text-muted-foreground">Best month</p>
-                <p className="mt-1 font-semibold">{metrics.bestMonth.label}</p>
-                <p className="tabular text-2xl font-semibold text-emerald">
-                  {formatCurrency(metrics.bestMonth.revenue, { decimals: 2 })}
-                </p>
-              </Card>
-            )}
+          {selectedMonthInsights.length > 0 && (
+            <AffiliateInsightsSection insights={selectedMonthInsights} />
+          )}
+        </>
+      )}
 
-            <div>
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-subtle">
-                All-time insights
-              </p>
-              <AffiliateInsightsList insights={allTime} compact />
-            </div>
-          </div>
-        )}
-      </div>
-    </Card>
+      {tab === "alltime" && (
+        <>
+          <TikTokLifetimePreview uploads={uploads} handle={handle} />
+          {allTime.length > 0 && <AffiliateInsightsSection insights={allTime} />}
+        </>
+      )}
+    </div>
   );
 
   if (layout === "modal") {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6">
         <button
           type="button"
           aria-label="Close"
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
           onClick={onClose}
         />
-        <div className="relative w-full max-w-4xl">{panel}</div>
+        <div className="relative my-6 w-full max-w-4xl rounded-2xl border border-primary/20 bg-background/95 p-5 shadow-2xl backdrop-blur-xl sm:p-6">
+          {content}
+        </div>
       </div>
     );
   }
 
-  return <div className="mx-auto w-full max-w-4xl">{panel}</div>;
-}
-
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-  accent,
-  sub,
-}: {
-  icon: typeof TrendingUp;
-  label: string;
-  value: string;
-  accent: string;
-  sub?: string;
-}) {
-  return (
-    <Card className="relative overflow-hidden p-3 text-center sm:text-left">
-      <div
-        className="pointer-events-none absolute -right-4 -top-4 size-14 rounded-full opacity-20 blur-xl"
-        style={{ background: accent }}
-      />
-      <Icon className="mx-auto size-3.5 sm:mx-0" style={{ color: accent }} />
-      <p className="mt-1 text-[10px] uppercase tracking-wide text-subtle">{label}</p>
-      <p className="tabular text-sm font-semibold">{value}</p>
-      {sub && <p className="text-[10px] text-subtle">{sub}</p>}
-    </Card>
-  );
-}
-
-function BreakdownRow({
-  label,
-  value,
-  total,
-  color,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  color: string;
-}) {
-  const pct = total > 0 ? (value / total) * 100 : 0;
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="truncate pr-2">{label}</span>
-        <span className="tabular shrink-0 font-medium">{formatCurrency(value, { decimals: 0 })}</span>
-      </div>
-      <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.05]">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-      </div>
-    </div>
-  );
+  return <div className="mx-auto w-full max-w-4xl">{content}</div>;
 }
