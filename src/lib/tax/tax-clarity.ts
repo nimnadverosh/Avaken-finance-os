@@ -7,6 +7,7 @@
  * attribution). Otherwise falls back to seed data for demo mode.
  */
 
+import { isRealDataMode } from "@/lib/data/real-data-mode";
 import { accounts, tiktokAccounts } from "@/lib/data/mock";
 import { currentVatPeriod, getReserves, personalTaxEstimate, vatNetDue } from "@/lib/data/queries";
 import { corpTax } from "@/lib/tax/uk-corp-tax";
@@ -78,9 +79,9 @@ function fromUploads(now = new Date()): Omit<TaxClarity, "lines"> & { linesInput
   if (!model) return null;
 
   const inQuarter = tiktokUploadsInQuarter(now);
-  const source = inQuarter.length > 0 ? inQuarter : getTikTokUploads().slice(0, 3);
+  const source = getTikTokUploads();
   const periodLabel =
-    inQuarter.length > 0 ? ukQuarterLabel(now) : `${model.latest.periodLabel} (uploaded)`;
+    inQuarter.length > 0 ? ukQuarterLabel(now) : `${model.latest.periodLabel} + prior uploads`;
 
   let companyRevenue = 0;
   let personalRevenue = 0;
@@ -91,16 +92,16 @@ function fromUploads(now = new Date()): Omit<TaxClarity, "lines"> & { linesInput
   }
 
   const totalRevenue = companyRevenue + personalRevenue;
-  const affiliates = tiktokAffiliatesFromAccounts();
+  const affiliates = tiktokAffiliatesFromAccounts({ period: "all" });
   const perAccount: AccountRevenue[] = affiliates
-    .filter((a) => a.revenue > 0)
+    .filter((a) => (a.totalRevenue ?? a.revenue) > 0)
     .map((a) => ({
       id: a.id,
       handle: a.handle,
       niche: a.niche,
       payTo: a.payTo,
-      quarter: a.revenue,
-      share: totalRevenue === 0 ? 0 : a.revenue / totalRevenue,
+      quarter: a.totalRevenue ?? a.revenue,
+      share: totalRevenue === 0 ? 0 : (a.totalRevenue ?? a.revenue) / totalRevenue,
     }))
     .sort((a, b) => b.quarter - a.quarter);
 
@@ -191,8 +192,8 @@ export function getTaxClarity(now = new Date()): TaxClarity {
     return { ...fromReal, lines };
   }
 
-  // Demo fallback when no uploads yet and no accounts configured
-  if (!hasAffiliateAccounts()) {
+  // Demo fallback when no uploads yet and not in real-data mode
+  if (!hasAffiliateAccounts() && !isRealDataMode()) {
     const MONTHS_PER_QUARTER = 3;
     const perAccountRaw = tiktokAccounts.map((a) => ({
       id: a.id,

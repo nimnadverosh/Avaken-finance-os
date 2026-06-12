@@ -3,7 +3,8 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "./page-header";
-import { avakenAnnualProfit, corpTaxEstimate, getPayrollPlan, personalTaxEstimate } from "@/lib/data/queries";
+import { avakenAnnualProfit, corpTaxEstimate, getPayrollPlan, getReserves, personalTaxEstimate } from "@/lib/data/queries";
+import { isRealDataMode } from "@/lib/data/real-data-mode";
 import { formatCurrency } from "@/lib/format";
 import { LOWER_LIMIT, UPPER_LIMIT } from "@/lib/tax/uk-corp-tax";
 
@@ -12,6 +13,24 @@ export function TaxView() {
   const personal = personalTaxEstimate();
   const profit = avakenAnnualProfit();
   const payroll = getPayrollPlan();
+  const corpReserve = getReserves("avaken").find((r) => r.label === "Corp Tax Reserve");
+  const reserved = corpReserve?.reserved ?? 0;
+
+  if (isRealDataMode() && profit === 0) {
+    return (
+      <div>
+        <PageHeader
+          title="Tax"
+          description="Upload TikTok earnings reports to calculate corporation and personal tax estimates."
+        />
+        <Card className="border-dashed p-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            No commission data yet. Import your monthly TikTok Shop reports to populate tax projections.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -73,14 +92,14 @@ export function TaxView() {
           </div>
           <div className="space-y-4 p-5">
             <div>
-              <p className="tabular text-2xl font-semibold">{formatCurrency(24_500)}</p>
+              <p className="tabular text-2xl font-semibold">{formatCurrency(reserved)}</p>
               <p className="text-[11px] text-subtle">reserved</p>
             </div>
-            <Progress label="Coverage" value={24_500 / corp.tax} color="#a78bfa" />
+            <Progress label="Coverage" value={corp.tax === 0 ? 1 : reserved / corp.tax} color="#a78bfa" />
             <div className="text-[11px] text-muted-foreground">
               Top up by{" "}
               <span className="font-semibold text-foreground">
-                {formatCurrency(Math.max(0, corp.tax - 24_500))}
+                {formatCurrency(Math.max(0, corp.tax - reserved))}
               </span>{" "}
               to fully cover the projected liability.
             </div>

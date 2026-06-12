@@ -13,11 +13,11 @@ import { AffiliatesLeaderboard } from "./affiliates-leaderboard";
 import { TransactionsFeed } from "./transactions-feed";
 import { InsightsPanel } from "./insights-panel";
 import { PeriodToggle, type Period } from "./period-toggle";
+import { MonthPicker } from "./month-picker";
 import { SectionHeader } from "./section";
 import { RevenueChart } from "@/components/charts/revenue-chart";
 import { CashflowChart } from "@/components/charts/cashflow-chart";
 import { ExpenseDonut } from "@/components/charts/expense-donut";
-import { NetWorthChart } from "@/components/charts/networth-chart";
 import { useEntity } from "@/lib/entity-context";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -27,48 +27,64 @@ import {
   getExpenseBreakdown,
   getInsights,
   getKpis,
-  getNetWorthSeries,
   getReserves,
   getRevenueSeries,
+  listUploadedMonths,
+  periodLabel,
   recentTransactions,
   topAffiliates,
 } from "@/lib/data/queries";
 import { getTikTokDashboardModel } from "@/lib/tiktok/dashboard";
+import { hasTikTokUploads } from "@/lib/tiktok/store";
+import type { TikTokPeriodSelection } from "@/lib/tiktok/period";
 
 export function Dashboard() {
   const { entity, config } = useEntity();
   const mockDataVersion = useMockDataVersion();
-  const [period, setPeriod] = useState<Period>("MTD");
+  const [period, setPeriod] = useState<Period>("all");
+  const [monthKey, setMonthKey] = useState<string | undefined>();
   const [today, setToday] = useState<string>("");
+
+  const uploadedMonths = useMemo(() => listUploadedMonths(), [mockDataVersion]);
+
   useEffect(() => {
     setToday(formatDate(new Date(), { day: "numeric", month: "long", year: "numeric" }));
   }, []);
 
-  const kpis = useMemo(() => getKpis(entity), [entity, mockDataVersion]);
-  const revenueSeries = getRevenueSeries(entity);
-  const cashflowSeries = getCashflowSeries(entity);
-  const expenseBreakdown = getExpenseBreakdown(entity);
-  const netWorthSeries = getNetWorthSeries();
+  useEffect(() => {
+    if (period === "month" && uploadedMonths.length > 0 && !monthKey) {
+      setMonthKey(uploadedMonths[0]!.monthKey);
+    }
+  }, [period, uploadedMonths, monthKey]);
+
+  const selection: TikTokPeriodSelection = useMemo(
+    () => ({
+      period,
+      monthKey: period === "month" ? monthKey : undefined,
+    }),
+    [period, monthKey],
+  );
+
+  const kpis = useMemo(() => getKpis(entity, selection), [entity, mockDataVersion, selection]);
+  const revenueSeries = useMemo(() => getRevenueSeries(entity), [entity, mockDataVersion]);
+  const cashflowSeries = useMemo(() => getCashflowSeries(entity), [entity, mockDataVersion]);
+  const expenseBreakdown = useMemo(
+    () => getExpenseBreakdown(entity, selection),
+    [entity, mockDataVersion, selection],
+  );
   const reserves = getReserves(entity);
   const accounts = useMemo(() => getAccounts(entity), [entity, mockDataVersion]);
-  const affiliates = topAffiliates(5);
+  const affiliates = useMemo(() => topAffiliates(5, selection), [mockDataVersion, selection]);
   const txns = useMemo(() => recentTransactions(entity, 7), [entity, mockDataVersion]);
-  const insights = getInsights(entity, 4);
+  const insights = useMemo(() => getInsights(entity, 4), [entity, mockDataVersion]);
+  const tiktokModel = useMemo(() => getTikTokDashboardModel(), [mockDataVersion]);
+  const periodDesc = periodLabel(selection);
 
   const showAffiliates = entity === "avaken" || entity === "consolidated";
   const showBalanceSummary = entity === "personal" || entity === "consolidated";
 
-  const latestNetWorth =
-    entity === "personal"
-      ? netWorthSeries[netWorthSeries.length - 1].personal
-      : entity === "avaken"
-        ? netWorthSeries[netWorthSeries.length - 1].avaken
-        : netWorthSeries[netWorthSeries.length - 1].personal! +
-          netWorthSeries[netWorthSeries.length - 1].avaken!;
-
   return (
     <div className="space-y-8">
-      {/* ---------- Hero strip ---------- */}
       <section className="space-y-4">
         <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
@@ -84,7 +100,14 @@ export function Dashboard() {
                 {config.description}
                 {today && (
                   <>
-                    {" "}· <span className="text-foreground">{today}</span>
+                    {" "}
+                    · <span className="text-foreground">{today}</span>
+                  </>
+                )}
+                {hasTikTokUploads() && (
+                  <>
+                    {" "}
+                    · <span className="text-primary">{periodDesc}</span>
                   </>
                 )}
               </p>
@@ -92,6 +115,9 @@ export function Dashboard() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <PeriodToggle value={period} onChange={setPeriod} />
+            {period === "month" && uploadedMonths.length > 0 && (
+              <MonthPicker months={uploadedMonths} value={monthKey} onChange={setMonthKey} />
+            )}
             <Button variant="outline" size="sm">
               <Download className="size-3.5" />
               Export
@@ -105,7 +131,6 @@ export function Dashboard() {
 
         <MorningQuickUpdate />
 
-        {/* ---------- KPI grid ---------- */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {kpis.map((k, i) => (
             <KpiCard key={k.id} kpi={k} index={i} />
@@ -123,7 +148,6 @@ export function Dashboard() {
         </section>
       )}
 
-      {/* ---------- Reserves (Avaken / Consolidated) ---------- */}
       {reserves.length > 0 && (
         <section>
           <SectionHeader
@@ -138,13 +162,16 @@ export function Dashboard() {
         </section>
       )}
 
-      {/* ---------- Charts row ---------- */}
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         <Card className="overflow-hidden xl:col-span-2">
           <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <div>
               <h3 className="text-sm font-semibold tracking-tight">Revenue vs net profit</h3>
-              <p className="text-[11px] text-subtle">Trailing 12 months</p>
+              <p className="text-[11px] text-subtle">
+                {tiktokModel
+                  ? `${tiktokModel.series.length} uploaded month${tiktokModel.series.length === 1 ? "" : "s"}`
+                  : "Upload TikTok reports to populate"}
+              </p>
             </div>
             <Legend
               items={[
@@ -154,7 +181,11 @@ export function Dashboard() {
             />
           </div>
           <div className="px-3 pb-3 pt-2">
-            <RevenueChart data={revenueSeries} />
+            {revenueSeries.length > 0 ? (
+              <RevenueChart data={revenueSeries} />
+            ) : (
+              <EmptyChart message="Upload monthly TikTok earnings reports to see your revenue history." />
+            )}
           </div>
         </Card>
 
@@ -162,14 +193,15 @@ export function Dashboard() {
           <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <div>
               <h3 className="text-sm font-semibold tracking-tight">Expense mix</h3>
-              <p className="text-[11px] text-subtle">Current month</p>
+              <p className="text-[11px] text-subtle">{periodDesc}</p>
             </div>
-            <button className="text-[11px] text-muted-foreground hover:text-foreground">
-              Drill in <ArrowUpRight className="ml-0.5 inline size-3" />
-            </button>
           </div>
           <div className="p-5">
-            <ExpenseDonut data={expenseBreakdown} />
+            {expenseBreakdown.length > 0 ? (
+              <ExpenseDonut data={expenseBreakdown} />
+            ) : (
+              <EmptyChart message="Earnings type breakdown appears after you upload reports." compact />
+            )}
           </div>
         </Card>
       </section>
@@ -179,7 +211,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <div>
               <h3 className="text-sm font-semibold tracking-tight">Cashflow</h3>
-              <p className="text-[11px] text-subtle">Inflow vs outflow per month</p>
+              <p className="text-[11px] text-subtle">Inflow vs outflow per uploaded month</p>
             </div>
             <Legend
               items={[
@@ -189,32 +221,27 @@ export function Dashboard() {
             />
           </div>
           <div className="px-3 pb-3 pt-2">
-            <CashflowChart data={cashflowSeries} />
+            {cashflowSeries.length > 0 ? (
+              <CashflowChart data={cashflowSeries} />
+            ) : (
+              <EmptyChart message="Cashflow chart fills in as you add monthly uploads." />
+            )}
           </div>
         </Card>
 
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
-            <div>
+        {!hasTikTokUploads() && (
+          <Card className="overflow-hidden xl:col-span-1">
+            <div className="border-b border-border/60 px-5 py-3">
               <h3 className="text-sm font-semibold tracking-tight">Net worth</h3>
-              <p className="text-[11px] text-subtle">
-                {formatCurrency(latestNetWorth ?? 0)} today
-              </p>
+              <p className="text-[11px] text-subtle">From bank balances</p>
             </div>
-            <Legend
-              items={[
-                ...(entity !== "avaken" ? [{ color: "#38bdf8", label: "Personal" }] : []),
-                ...(entity !== "personal" ? [{ color: "#10b981", label: "Avaken" }] : []),
-              ]}
-            />
-          </div>
-          <div className="px-3 pb-3 pt-2">
-            <NetWorthChart data={netWorthSeries} entity={entity} />
-          </div>
-        </Card>
+            <div className="p-5 text-center text-sm text-muted-foreground">
+              Net worth trend uses demo data until daily balance updates are logged.
+            </div>
+          </Card>
+        )}
       </section>
 
-      {/* ---------- Accounts strip ---------- */}
       <section>
         <SectionHeader
           title="Accounts"
@@ -223,11 +250,10 @@ export function Dashboard() {
         <AccountsStrip accounts={accounts} />
       </section>
 
-      {/* ---------- Affiliates + insights + txns ---------- */}
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         {showAffiliates && (
           <div className="xl:col-span-2">
-            <AffiliatesLeaderboard accounts={affiliates} />
+            <AffiliatesLeaderboard accounts={affiliates} periodLabel={periodDesc} />
           </div>
         )}
         <div className={showAffiliates ? "" : "xl:col-span-2"}>
@@ -238,6 +264,16 @@ export function Dashboard() {
       <section>
         <TransactionsFeed transactions={txns} />
       </section>
+    </div>
+  );
+}
+
+function EmptyChart({ message, compact }: { message: string; compact?: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-center text-center text-sm text-muted-foreground ${compact ? "py-8" : "py-16"}`}
+    >
+      {message}
     </div>
   );
 }

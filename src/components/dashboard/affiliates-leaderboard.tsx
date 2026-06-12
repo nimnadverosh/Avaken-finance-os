@@ -19,9 +19,16 @@ const STATUS_LABEL = {
   "at-risk": "At risk",
 } as const;
 
-export function AffiliatesLeaderboard({ accounts }: { accounts: TikTokAccount[] }) {
+export function AffiliatesLeaderboard({
+  accounts,
+  periodLabel: periodLabelText = "All uploads",
+}: {
+  accounts: TikTokAccount[];
+  periodLabel?: string;
+}) {
   const total = accounts.reduce((a, b) => a + b.revenue, 0);
-  const withData = accounts.filter((a) => a.revenue > 0);
+  const allTime = accounts.reduce((a, b) => a + (b.totalRevenue ?? b.revenue), 0);
+  const withData = accounts.filter((a) => a.revenue > 0 || (a.totalRevenue ?? 0) > 0);
 
   if (withData.length === 0) {
     return (
@@ -39,9 +46,12 @@ export function AffiliatesLeaderboard({ accounts }: { accounts: TikTokAccount[] 
       <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
         <div>
           <h3 className="text-sm font-semibold tracking-tight">TikTok Shop · Top performers</h3>
-          <p className="text-[11px] text-subtle">{withData.length} accounts · {formatCurrency(total)} MTD</p>
+          <p className="text-[11px] text-subtle">
+            {withData.length} accounts · {formatCurrency(total)} {periodLabelText.toLowerCase()}
+            {allTime > total ? ` · ${formatCurrency(allTime)} all-time` : ""}
+          </p>
         </div>
-        <span className="text-[11px] text-subtle">last 7 days</span>
+        <span className="text-[11px] text-subtle">monthly trend</span>
       </div>
       <div className="divide-y divide-border/60">
         {withData.map((a) => (

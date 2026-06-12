@@ -7,14 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Delta } from "@/components/ui/delta";
 import { Button } from "@/components/ui/button";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "./page-header";
+import { PeriodToggle, type Period } from "@/components/dashboard/period-toggle";
+import { MonthPicker } from "@/components/dashboard/month-picker";
 import { TikTokAccountManager } from "@/components/tiktok/tiktok-account-manager";
-import { allAffiliates } from "@/lib/data/queries";
+import { allAffiliates, listUploadedMonths, periodLabel } from "@/lib/data/queries";
 import { hasTikTokUploads } from "@/lib/tiktok/store";
 import { hasAffiliateAccounts } from "@/lib/tiktok/accounts";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import type { TikTokPeriodSelection } from "@/lib/tiktok/period";
 
 const STATUS_TONE = {
   scaling: "positive",
@@ -32,15 +35,23 @@ const STATUS_LABEL = {
 
 export function AffiliatesView() {
   const version = useMockDataVersion();
-  const accounts = useMemo(() => allAffiliates(), [version]);
+  const [period, setPeriod] = useState<Period>("all");
+  const [monthKey, setMonthKey] = useState<string | undefined>();
+  const uploadedMonths = useMemo(() => listUploadedMonths(), [version]);
+
+  const selection: TikTokPeriodSelection = useMemo(
+    () => ({ period, monthKey: period === "month" ? monthKey ?? uploadedMonths[0]?.monthKey : undefined }),
+    [period, monthKey, uploadedMonths],
+  );
+
+  const accounts = useMemo(() => allAffiliates(selection), [version, selection]);
   const hasRealData = hasAffiliateAccounts() || hasTikTokUploads();
   const withRevenue = accounts.filter((a) => a.revenue > 0);
-  const totalRevenue = withRevenue.reduce((a, b) => a + b.revenue, 0);
+  const periodRevenue = withRevenue.reduce((a, b) => a + b.revenue, 0);
+  const totalAllTime = withRevenue.reduce((a, b) => a + (b.totalRevenue ?? b.revenue), 0);
   const totalOrders = withRevenue.reduce((a, b) => a + b.orders, 0);
-  const avgConversion =
-    withRevenue.length > 0
-      ? withRevenue.reduce((a, b) => a + b.conversion, 0) / withRevenue.length
-      : 0;
+  const totalMonths = withRevenue.reduce((a, b) => a + (b.uploadMonths ?? 0), 0);
+  const periodDesc = periodLabel(selection);
 
   return (
     <div>
@@ -48,7 +59,7 @@ export function AffiliatesView() {
         title="TikTok Shop affiliates"
         description={
           hasRealData
-            ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${formatCurrency(totalRevenue)} latest month`
+            ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${formatCurrency(periodRevenue)} ${periodDesc.toLowerCase()} · ${formatCurrency(totalAllTime)} all-time`
             : "Add your creator accounts and upload monthly earnings reports"
         }
         actions={
@@ -60,23 +71,33 @@ export function AffiliatesView() {
         }
       />
 
+      {hasRealData && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <PeriodToggle value={period} onChange={setPeriod} />
+          {period === "month" && uploadedMonths.length > 0 && (
+            <MonthPicker months={uploadedMonths} value={monthKey} onChange={setMonthKey} />
+          )}
+        </div>
+      )}
+
       <div className="mb-6">
         <TikTokAccountManager compact />
       </div>
 
       {withRevenue.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <Stat label="Latest month revenue" value={formatCurrency(totalRevenue)} accent="#10b981" />
-          <Stat label="Orders" value={formatNumber(totalOrders)} accent="#a78bfa" />
-          <Stat label="Avg conversion" value={`${avgConversion.toFixed(2)}%`} accent="#f59e0b" />
+        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat label={periodDesc} value={formatCurrency(periodRevenue)} accent="#10b981" />
+          <Stat label="All-time revenue" value={formatCurrency(totalAllTime)} accent="#34d399" />
+          <Stat label="Orders (period)" value={formatNumber(totalOrders)} accent="#a78bfa" />
+          <Stat label="Uploaded months" value={formatNumber(totalMonths)} accent="#f59e0b" />
         </div>
       )}
 
       {accounts.length === 0 ? (
         <Card className="border-dashed p-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No affiliate accounts yet. Add your TikTok handles above, then upload your Nov 2025 earnings
-            report (and other months) from TikTok Shop → Affiliate → Earnings.
+            No affiliate accounts yet. Add your TikTok handles above, then upload monthly earnings
+            reports from TikTok Shop → Affiliate → Earnings.
           </p>
           <Button asChild className="mt-4">
             <Link href="/import/tiktok">Upload your first report</Link>
@@ -86,8 +107,7 @@ export function AffiliatesView() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {accounts.map((a) => {
             const aov = a.orders > 0 ? a.revenue / a.orders : 0;
-            const convPct = Math.min(100, (a.conversion / 6) * 100);
-            const sharePct = totalRevenue > 0 ? (a.revenue / totalRevenue) * 100 : 0;
+            const sharePct = periodRevenue > 0 ? (a.revenue / periodRevenue) * 100 : 0;
             return (
               <Card key={a.id} className="relative overflow-hidden p-5">
                 <div
@@ -106,11 +126,17 @@ export function AffiliatesView() {
                   )}
                 </div>
 
-                {a.revenue > 0 ? (
+                {a.revenue > 0 || (a.totalRevenue ?? 0) > 0 ? (
                   <>
                     <div className="mt-4 flex items-end justify-between">
                       <div>
                         <p className="tabular text-2xl font-semibold">{formatCurrency(a.revenue)}</p>
+                        <p className="text-[11px] text-subtle">{periodDesc}</p>
+                        {(a.totalRevenue ?? 0) > a.revenue && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {formatCurrency(a.totalRevenue ?? 0)} all-time · {a.uploadMonths ?? 0} mo
+                          </p>
+                        )}
                         <Delta value={a.delta} className="mt-1" />
                       </div>
                       <Sparkline
@@ -121,6 +147,22 @@ export function AffiliatesView() {
                       />
                     </div>
 
+                    {a.monthlyBreakdown && a.monthlyBreakdown.length > 0 && (
+                      <div className="mt-3 space-y-1 rounded-lg bg-white/[0.02] p-2 ring-1 ring-white/5">
+                        {a.monthlyBreakdown.map((m) => (
+                          <div
+                            key={m.monthKey}
+                            className="flex items-center justify-between text-[11px]"
+                          >
+                            <span className="text-subtle">{m.label}</span>
+                            <span className="tabular font-medium">
+                              {formatCurrency(m.revenue)} · {formatNumber(m.orders)} orders
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="mt-4 grid grid-cols-2 gap-2 text-center">
                       <Tile label="Orders" value={formatNumber(a.orders)} />
                       <Tile label="AOV" value={formatCurrency(aov)} />
@@ -128,7 +170,7 @@ export function AffiliatesView() {
 
                     <div className="mt-3 flex items-center justify-between text-[11px] text-subtle">
                       <span>{a.payTo === "company" ? "Avaken Ltd" : "Personal"} payout</span>
-                      <span>{sharePct.toFixed(1)}% of total</span>
+                      <span>{sharePct.toFixed(1)}% of period</span>
                     </div>
                   </>
                 ) : (

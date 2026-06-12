@@ -7,6 +7,7 @@ import { Delta } from "@/components/ui/delta";
 import { PageHeader } from "./page-header";
 import { AllocationDonut, type Slice } from "@/components/charts/allocation-donut";
 import { getPortfolio, portfolioTotals } from "@/lib/data/queries";
+import { isRealDataMode } from "@/lib/data/real-data-mode";
 import { formatCurrency, formatPercent } from "@/lib/format";
 
 const KIND_COLOR = {
@@ -30,6 +31,22 @@ const KIND_LABEL = {
 export function PortfolioView() {
   const positions = getPortfolio();
   const totals = portfolioTotals();
+
+  if (isRealDataMode() && positions.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          title="Portfolio"
+          description="Investment holdings appear here when you import portfolio data."
+        />
+        <Card className="border-dashed p-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            No portfolio positions on file. Your eToro balance still shows under Accounts if configured.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   const byKind = new Map<string, number>();
   positions.forEach((p) => byKind.set(p.kind, (byKind.get(p.kind) ?? 0) + p.value));

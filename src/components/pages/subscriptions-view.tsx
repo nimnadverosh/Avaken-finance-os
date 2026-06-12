@@ -13,6 +13,7 @@ import {
   subscriptionsByCategory,
   upcomingRenewals,
 } from "@/lib/data/queries";
+import { isRealDataMode } from "@/lib/data/real-data-mode";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,23 @@ export function SubscriptionsView() {
   const byCat = subscriptionsByCategory(entity);
   // Compute renewals client-only — depends on "now" and would otherwise cause hydration drift.
   const renewals = useMemo(() => (now == null ? [] : upcomingRenewals(entity, 30)), [entity, now]);
+
+  if (isRealDataMode() && all.length === 0) {
+    return (
+      <div>
+        <PageHeader
+          title="Subscriptions"
+          description="No subscription data — add subscriptions manually when you connect billing imports."
+        />
+        <Card className="border-dashed p-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            Sample subscriptions are hidden while you use real TikTok earnings data. Bank balances
+            and transactions still reflect your accounts.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   // Overlap detector — same aiCategory with >1 subscription
   const overlap = useMemo(() => {

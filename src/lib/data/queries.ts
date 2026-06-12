@@ -32,19 +32,29 @@ import { getDailyFinancialSnapshot } from "./daily-updates";
 import { getConsolidatedFinancialSummary } from "./personal-summary";
 import { corpTax, type CorpTaxBreakdown } from "@/lib/tax/uk-corp-tax";
 import { ukPersonalTax, type TaxBreakdown } from "@/lib/tax/uk-income-tax";
+import { isRealDataMode } from "./real-data-mode";
 import {
   getTikTokDashboardModel,
   tiktokAffiliatesFromAccounts,
   tiktokCashflowSeries,
   tiktokExpenseBreakdown,
   tiktokInsights,
-  tiktokLatestNet,
-  tiktokLatestRevenue,
+  tiktokPeriodNet,
+  tiktokPeriodRevenue,
   tiktokRevenueSeries,
 } from "@/lib/tiktok/dashboard";
 import { hasAffiliateAccounts } from "@/lib/tiktok/accounts";
 import { hasTikTokUploads } from "@/lib/tiktok/store";
+import {
+  getFilteredUploads,
+  periodDelta,
+  periodLabel,
+  type TikTokPeriodSelection,
+} from "@/lib/tiktok/period";
 import { clampDelta } from "@/lib/tiktok/model";
+
+export type { TikTokPeriodSelection };
+export { periodLabel, listUploadedMonths } from "@/lib/tiktok/period";
 
 const VAT_RATE = 0.2;
 
@@ -106,6 +116,14 @@ export function netWorth(entity: Entity): number {
     return getConsolidatedFinancialSummary().totalNetPosition + etoro;
   }
 
+  if (isRealDataMode()) {
+    return sum(
+      inEntity(getLedgerAccounts(), entity)
+        .filter((a) => a.type !== "credit")
+        .map((a) => a.balance),
+    );
+  }
+
   const latest = netWorthSeries[netWorthSeries.length - 1];
   if (entity === "personal") return latest.personal!;
   if (entity === "avaken") return latest.avaken!;
@@ -120,6 +138,8 @@ export function getRevenueSeries(entity: Entity): SeriesPoint[] {
     if (entity === "personal") return tiktokRevenueSeries(model, "personal");
     return tiktokRevenueSeries(model, "consolidated");
   }
+
+  if (isRealDataMode()) return [];
 
   if (entity === "avaken") return revenueSeries;
   if (entity === "personal") {
@@ -150,6 +170,8 @@ export function getCashflowSeries(entity: Entity): SeriesPoint[] {
     return tiktokCashflowSeries(model, "consolidated");
   }
 
+  if (isRealDataMode()) return [];
+
   if (entity === "avaken") return cashflowSeries;
   if (entity === "personal") {
     const rev = getRevenueSeries("personal");
@@ -164,20 +186,26 @@ export function getCashflowSeries(entity: Entity): SeriesPoint[] {
 }
 
 export function getNetWorthSeries(): SeriesPoint[] {
+  if (isRealDataMode()) return [];
   return netWorthSeries.map((p) => ({ ...p, value: p.personal! + p.avaken! }));
 }
 
-export function getExpenseBreakdown(entity: Entity): CategorySlice[] {
+export function getExpenseBreakdown(
+  entity: Entity,
+  selection: TikTokPeriodSelection = { period: "all" },
+): CategorySlice[] {
   const model = getTikTokDashboardModel();
   if (model) {
-    // Earnings-type mix comes from the latest upload; only show when that month
-    // has income for the active entity (or always on consolidated).
-    if (entity === "consolidated") return tiktokExpenseBreakdown(model);
-    if (entity === "personal" && model.latest.personal.revenue > 0) return tiktokExpenseBreakdown(model);
-    if (entity === "avaken" && model.latest.company.revenue > 0) return tiktokExpenseBreakdown(model);
+    if (entity === "consolidated") return tiktokExpenseBreakdown(model, selection);
+    const uploads = getFilteredUploads(selection);
+    const hasEntityIncome = uploads.some((u) =>
+      entity === "personal" ? u.summary.personal.revenue > 0 : u.summary.company.revenue > 0,
+    );
+    if (hasEntityIncome) return tiktokExpenseBreakdown(model, selection);
     return [];
   }
 
+  if (isRealDataMode()) return [];
   if (entity === "personal") return personalExpenseBreakdown;
   if (entity === "avaken") return avakenExpenseBreakdown;
   // merge by name
@@ -196,6 +224,13 @@ export function currentVatPeriod() {
 }
 
 export function vatNetDue(): number {
+  const model = getTikTokDashboardModel();
+  if (model) {
+    return Math.round(
+      getFilteredUploads({ period: "ytd" }).reduce((s, u) => s + u.summary.company.vatOnSales, 0) * 100,
+    ) / 100;
+  }
+  if (isRealDataMode()) return 0;
   const p = currentVatPeriod();
   return p.vatOnSales - p.vatOnPurchases;
 }
@@ -207,6 +242,7 @@ export function avakenAnnualProfit(): number {
   if (model) {
     return sum(tiktokRevenueSeries(model, "avaken").map((r) => r.net!));
   }
+  if (isRealDataMode()) return 0;
   return sum(revenueSeries.map((r) => r.net!));
 }
 
@@ -256,6 +292,7 @@ export function getReserves(entity: Entity): Reserve[] {
 
 /* ---- Subscriptions ---- */
 export function monthlySubscriptionSpend(entity: Entity): number {
+  if (isRealDataMode()) return 0;
   return sum(
     inEntity(subscriptions, entity).map((s) => {
       if (s.cadence === "annual") return s.amount / 12;
@@ -266,23 +303,30 @@ export function monthlySubscriptionSpend(entity: Entity): number {
 }
 
 /* ---- Affiliate ---- */
-/** Registered TikTok accounts with real upload data, or seed demo accounts only when nothing configured. */
-function effectiveAffiliates(): TikTokAccount[] {
+function effectiveAffiliates(
+  selection: TikTokPeriodSelection = { period: "all" },
+): TikTokAccount[] {
   if (hasTikTokUploads() || hasAffiliateAccounts()) {
-    return tiktokAffiliatesFromAccounts();
+    return tiktokAffiliatesFromAccounts(selection);
   }
+  if (isRealDataMode()) return [];
   return tiktokAccounts;
 }
 
-export function affiliateRevenue(): number {
-  const model = getTikTokDashboardModel();
-  if (model) return tiktokLatestRevenue(model, "consolidated");
-  const affiliates = effectiveAffiliates();
-  return sum(affiliates.map((t) => t.revenue));
+export function affiliateRevenue(
+  selection: TikTokPeriodSelection = { period: "all" },
+): number {
+  if (hasTikTokUploads()) {
+    return tiktokPeriodRevenue("consolidated", selection);
+  }
+  return sum(effectiveAffiliates(selection).map((t) => t.revenue));
 }
 
-export function topAffiliates(limit = 6): TikTokAccount[] {
-  return [...effectiveAffiliates()].sort((a, b) => b.revenue - a.revenue).slice(0, limit);
+export function topAffiliates(
+  limit = 6,
+  selection: TikTokPeriodSelection = { period: "all" },
+): TikTokAccount[] {
+  return [...effectiveAffiliates(selection)].sort((a, b) => b.revenue - a.revenue).slice(0, limit);
 }
 
 /* ---- Accounts strip ---- */
@@ -300,10 +344,12 @@ export function recentTransactions(entity: Entity, limit = 8): Transaction[] {
 
 /* ---- Subscriptions ---- */
 export function listSubscriptions(entity: Entity): Subscription[] {
+  if (isRealDataMode()) return [];
   return inEntity(subscriptions, entity).slice().sort((a, b) => b.amount - a.amount);
 }
 
 export function subscriptionsByCategory(entity: Entity): CategorySlice[] {
+  if (isRealDataMode()) return [];
   const palette = ["#10b981", "#34d399", "#38bdf8", "#a78bfa", "#f59e0b", "#f43f5e", "#22d3ee", "#fb7185"];
   const map = new Map<string, number>();
   inEntity(subscriptions, entity).forEach((s) => {
@@ -316,6 +362,7 @@ export function subscriptionsByCategory(entity: Entity): CategorySlice[] {
 }
 
 export function upcomingRenewals(entity: Entity, days = 30): Subscription[] {
+  if (isRealDataMode()) return [];
   const now = new Date();
   const horizon = new Date(now.getTime() + days * 86400_000);
   return inEntity(subscriptions, entity)
@@ -344,16 +391,20 @@ export function listTransactions(
 
 /* ---- VAT ---- */
 export function listVatPeriods(): VatPeriod[] {
+  if (isRealDataMode()) return [];
   return [...vatPeriods].sort((a, b) => +new Date(b.periodStart) - +new Date(a.periodStart));
 }
 
 /* ---- TikTok ---- */
-export function allAffiliates(): TikTokAccount[] {
-  return [...effectiveAffiliates()];
+export function allAffiliates(
+  selection: TikTokPeriodSelection = { period: "all" },
+): TikTokAccount[] {
+  return [...effectiveAffiliates(selection)];
 }
 
 /* ---- Portfolio ---- */
 export function getPortfolio(): PortfolioPosition[] {
+  if (isRealDataMode()) return [];
   return [...portfolio].sort((a, b) => b.value - a.value);
 }
 
@@ -367,15 +418,23 @@ export function portfolioTotals() {
 
 /* ---- Personal income tax ---- */
 export function personalTaxEstimate(): TaxBreakdown {
+  if (isRealDataMode()) {
+    const personalIncome = tiktokPeriodRevenue("personal", { period: "ytd" });
+    return ukPersonalTax(Math.min(personalIncome, 12570), Math.max(0, personalIncome - 12570));
+  }
   return ukPersonalTax(payrollPlan.salary, payrollPlan.dividends);
 }
 
 export function getPayrollPlan() {
+  if (isRealDataMode()) {
+    return { salary: 0, dividends: 0 };
+  }
   return payrollPlan;
 }
 
 /* ---- Audit log ---- */
 export function getAuditLog(entity: Entity, limit = 20): AuditEntry[] {
+  if (isRealDataMode()) return [];
   return inEntity(auditLog, entity)
     .slice()
     .sort((a, b) => +new Date(b.at) - +new Date(a.at))
@@ -395,6 +454,8 @@ export function getInsights(entity: Entity, limit = 4): Insight[] {
       .slice(0, limit);
   }
 
+  if (isRealDataMode()) return [];
+
   const filtered = insights.filter((i) => {
     if (entity === "consolidated") return true;
     if (entity === "personal") return i.tag === "Subscriptions";
@@ -404,9 +465,14 @@ export function getInsights(entity: Entity, limit = 4): Insight[] {
 }
 
 /* ---- KPI deck for dashboard ---- */
-export function getKpis(entity: Entity): Kpi[] {
+export function getKpis(
+  entity: Entity,
+  selection: TikTokPeriodSelection = { period: "all" },
+): Kpi[] {
   const model = getTikTokDashboardModel();
   const rev = getRevenueSeries(entity);
+  const e =
+    entity === "consolidated" ? "consolidated" : entity === "avaken" ? "avaken" : "personal";
 
   let lastRevenue: number;
   let lastNet: number;
@@ -414,39 +480,42 @@ export function getKpis(entity: Entity): Kpi[] {
   let netDelta: number;
   let revSpark: number[];
   let netSpark: number[];
-  let revenueSub = "vs last month";
+  let revenueSub = periodLabel(selection);
 
   if (model) {
-    lastRevenue = tiktokLatestRevenue(model, entity);
-    lastNet = tiktokLatestNet(model, entity);
-    const prevRevenue =
-      model.previous
-        ? entity === "avaken"
-          ? model.previous.company.revenue
-          : entity === "personal"
-            ? model.previous.personal.revenue
-            : model.previous.grossRevenue
-        : 0;
-    const prevNet =
-      model.previous
-        ? entity === "avaken"
-          ? model.previous.company.netProfit
-          : entity === "personal"
-            ? model.previous.personal.netProfit
-            : model.previous.netProfit
-        : 0;
-    revDelta = clampDelta(prevRevenue ? ((lastRevenue - prevRevenue) / prevRevenue) * 100 : 0);
-    netDelta = clampDelta(prevNet ? ((lastNet - prevNet) / prevNet) * 100 : 0);
+    lastRevenue = tiktokPeriodRevenue(e, selection);
+    lastNet = tiktokPeriodNet(e, selection);
+    const uploads = getFilteredUploads(selection);
+    revDelta = clampDelta(periodDelta(uploads, e));
+    const prevSelection =
+      selection.period === "latest" && model.previous
+        ? clampDelta(
+            model.previous.grossRevenue
+              ? ((model.latest.grossRevenue - model.previous.grossRevenue) /
+                  model.previous.grossRevenue) *
+                100
+              : 0,
+          )
+        : revDelta;
+    netDelta = prevSelection;
     revSpark = rev.map((p) => p.revenue!);
     netSpark = rev.map((p) => p.net!);
-    revenueSub = `${model.latest.periodLabel} · uploaded`;
+    revenueSub = `${periodLabel(selection)} · ${model.uploadCount} upload${model.uploadCount === 1 ? "" : "s"}`;
+  } else if (isRealDataMode()) {
+    lastRevenue = 0;
+    lastNet = 0;
+    revDelta = 0;
+    netDelta = 0;
+    revSpark = [];
+    netSpark = [];
+    revenueSub = "Upload TikTok reports";
   } else {
     const last = rev[rev.length - 1];
     const prev = rev[rev.length - 2];
-    lastRevenue = last.revenue!;
-    lastNet = last.net!;
-    revDelta = clampDelta(prev.revenue ? ((last.revenue! - prev.revenue!) / prev.revenue!) * 100 : 0);
-    netDelta = clampDelta(prev.net ? ((last.net! - prev.net!) / prev.net!) * 100 : 0);
+    lastRevenue = last?.revenue ?? 0;
+    lastNet = last?.net ?? 0;
+    revDelta = clampDelta(prev?.revenue ? ((last.revenue! - prev.revenue!) / prev.revenue!) * 100 : 0);
+    netDelta = clampDelta(prev?.net ? ((last.net! - prev.net!) / prev.net!) * 100 : 0);
     revSpark = rev.slice(-7).map((p) => p.revenue!);
     netSpark = rev.slice(-7).map((p) => p.net!);
   }
@@ -456,10 +525,12 @@ export function getKpis(entity: Entity): Kpi[] {
   const subs = monthlySubscriptionSpend(entity);
   const dailySnapshot = getDailyFinancialSnapshot();
 
-  const nwSpark = (entity === "consolidated"
-    ? netWorthSeries.map((p) => p.personal! + p.avaken!)
-    : netWorthSeries.map((p) => (entity === "personal" ? p.personal! : p.avaken!))
-  ).slice(-7);
+  const nwSpark = isRealDataMode()
+    ? []
+    : (entity === "consolidated"
+        ? netWorthSeries.map((p) => p.personal! + p.avaken!)
+        : netWorthSeries.map((p) => (entity === "personal" ? p.personal! : p.avaken!))
+      ).slice(-7);
 
   const marginPct = lastRevenue > 0 ? Math.round((lastNet / lastRevenue) * 100) : 0;
 
@@ -470,7 +541,7 @@ export function getKpis(entity: Entity): Kpi[] {
       value: lastRevenue,
       format: "currency",
       delta: revDelta,
-      spark: revSpark,
+      spark: revSpark.length > 0 ? revSpark : [0],
       accent: "#10b981",
       sub: revenueSub,
     },
@@ -480,7 +551,7 @@ export function getKpis(entity: Entity): Kpi[] {
       value: lastNet,
       format: "currency",
       delta: netDelta,
-      spark: netSpark,
+      spark: netSpark.length > 0 ? netSpark : [0],
       accent: "#34d399",
       sub: lastRevenue > 0 ? `${marginPct}% margin` : "after est. costs",
     },
@@ -489,8 +560,8 @@ export function getKpis(entity: Entity): Kpi[] {
       label: "Cash on Hand",
       value: cash,
       format: "currency",
-      delta: 5.4,
-      spark: nwSpark.map((v) => v * 0.4),
+      delta: 0,
+      spark: nwSpark.length > 0 ? nwSpark.map((v) => v * 0.4) : [cash],
       accent: "#38bdf8",
       sub: dailySnapshot ? "from morning update" : `${inEntity(getLedgerAccounts(), entity).length} accounts`,
     },
@@ -499,55 +570,72 @@ export function getKpis(entity: Entity): Kpi[] {
       label: "Net Worth",
       value: nw,
       format: "currency",
-      delta: 3.1,
-      spark: nwSpark,
+      delta: 0,
+      spark: nwSpark.length > 0 ? nwSpark : [nw],
       accent: "#a78bfa",
       sub: dailySnapshot ? "includes daily balances" : "total equity",
     },
   ];
 
   if (entity === "avaken" || entity === "consolidated") {
-    base.push({
-      id: "vat",
-      label: "VAT Due (Q4)",
-      value: vatNetDue(),
-      format: "currency",
-      delta: -2.8,
-      spark: vatPeriods.map((p) => p.vatOnSales - p.vatOnPurchases),
-      accent: "#f59e0b",
-      sub: `due ${new Date(currentVatPeriod().dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`,
-    });
-    base.push({
-      id: "subs",
-      label: "Subscriptions / mo",
-      value: subs,
-      format: "currency",
-      delta: 1.2,
-      spark: [780, 800, 815, 830, 845, 860, subs],
-      accent: "#f43f5e",
-      sub: `${inEntity(subscriptions, entity).length} active`,
-    });
+    if (!isRealDataMode()) {
+      base.push({
+        id: "vat",
+        label: "VAT Due (Q4)",
+        value: vatNetDue(),
+        format: "currency",
+        delta: 0,
+        spark: vatPeriods.map((p) => p.vatOnSales - p.vatOnPurchases),
+        accent: "#f59e0b",
+        sub: `due ${new Date(currentVatPeriod().dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`,
+      });
+    } else if (model) {
+      base.push({
+        id: "vat",
+        label: "Output VAT (YTD)",
+        value: vatNetDue(),
+        format: "currency",
+        delta: 0,
+        spark: revSpark,
+        accent: "#f59e0b",
+        sub: "from uploaded company commission",
+      });
+    }
+    if (!isRealDataMode()) {
+      base.push({
+        id: "subs",
+        label: "Subscriptions / mo",
+        value: subs,
+        format: "currency",
+        delta: 0,
+        spark: [subs],
+        accent: "#f43f5e",
+        sub: `${inEntity(subscriptions, entity).length} active`,
+      });
+    }
   } else {
-    base.push({
-      id: "subs",
-      label: "Subscriptions / mo",
-      value: subs,
-      format: "currency",
-      delta: 0,
-      spark: [60, 62, 65, 68, 70, 71, subs],
-      accent: "#f43f5e",
-      sub: `${inEntity(subscriptions, entity).length} active`,
-    });
-    base.push({
-      id: "invest",
-      label: "Portfolio Value",
-      value: getLedgerAccounts().find((a) => a.id === "etoro")!.balance,
-      format: "currency",
-      delta: 8.7,
-      spark: [31, 32.4, 33.8, 35.1, 36.6, 37.9, 38.9],
-      accent: "#22c55e",
-      sub: "eToro",
-    });
+    if (!isRealDataMode()) {
+      base.push({
+        id: "subs",
+        label: "Subscriptions / mo",
+        value: subs,
+        format: "currency",
+        delta: 0,
+        spark: [subs],
+        accent: "#f43f5e",
+        sub: `${inEntity(subscriptions, entity).length} active`,
+      });
+      base.push({
+        id: "invest",
+        label: "Portfolio Value",
+        value: getLedgerAccounts().find((a) => a.id === "etoro")!.balance,
+        format: "currency",
+        delta: 0,
+        spark: [getLedgerAccounts().find((a) => a.id === "etoro")!.balance],
+        accent: "#22c55e",
+        sub: "eToro",
+      });
+    }
   }
 
   return base;

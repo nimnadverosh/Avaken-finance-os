@@ -58,15 +58,21 @@ export interface TikTokAccount {
   handle: string;
   niche: string;
   followers: number;
-  revenue: number; // GMV-driven commission this month
+  /** Revenue for the active dashboard period. */
+  revenue: number;
   commission: number; // %
+  /** Orders for the active dashboard period. */
   orders: number;
   conversion: number; // %
   status: "scaling" | "stable" | "warming" | "at-risk";
   spark: number[];
   delta: number; // % vs last month
-  /** Where this account's payouts land: the company (Avaken Ltd / Tide) or a personal bank. */
   payTo: "company" | "personal";
+  /** Sum across every uploaded month (independent of period filter). */
+  totalRevenue?: number;
+  totalOrders?: number;
+  uploadMonths?: number;
+  monthlyBreakdown?: { monthKey: string; label: string; revenue: number; orders: number }[];
 }
 
 export interface VatPeriod {

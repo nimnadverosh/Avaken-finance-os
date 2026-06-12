@@ -1,4 +1,5 @@
 import { transactions as seedTransactions } from "./mock";
+import { isRealDataMode } from "./real-data-mode";
 import type { Transaction } from "./types";
 
 const STORAGE_KEY = "avaken-mock-imports";
@@ -40,6 +41,7 @@ function notifyLedgerChanged(): void {
 /** Seed data plus client-side imports (persisted in localStorage). */
 export function getLedgerTransactions(): Transaction[] {
   hydrateFromStorage();
+  if (isRealDataMode()) return [...importOverlay];
   return [...importOverlay, ...seedTransactions];
 }
 

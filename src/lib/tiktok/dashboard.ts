@@ -16,6 +16,14 @@ import {
   mergeMonthlySummaries,
   monthOverMonthDelta,
 } from "./model";
+import {
+  filterUploadsByPeriod,
+  getFilteredUploads,
+  monthlySparkForAccount,
+  sumUploadOrders,
+  sumUploadRevenue,
+  type TikTokPeriodSelection,
+} from "./period";
 import { getTikTokUploads } from "./store";
 import type { TikTokMonthlySummary, TikTokUploadRecord } from "./types";
 
@@ -136,89 +144,173 @@ export function tiktokCashflowSeries(
   }));
 }
 
-export function tiktokExpenseBreakdown(model: TikTokDashboardModel): CategorySlice[] {
+export function tiktokExpenseBreakdown(
+  model: TikTokDashboardModel,
+  selection?: TikTokPeriodSelection,
+): CategorySlice[] {
   const palette = ["#10b981", "#34d399", "#38bdf8", "#a78bfa", "#f59e0b", "#f43f5e"];
-  return model.latest.byType.map((t, i) => ({
+  const uploads = selection
+    ? filterUploadsByPeriod(getTikTokUploads(), selection)
+    : getTikTokUploads();
+  if (uploads.length === 0) {
+    return model.latest.byType.map((t, i) => ({
+      name: t.name,
+      value: t.revenue,
+      color: TYPE_COLORS[t.name] ?? palette[i % palette.length],
+    }));
+  }
+  const merged = mergeMonthlySummaries(uploads.map((u) => u.summary));
+  if (!merged) return [];
+  return merged.byType.map((t, i) => ({
     name: t.name,
     value: t.revenue,
     color: TYPE_COLORS[t.name] ?? palette[i % palette.length],
   }));
 }
 
+function buildMonthlyBreakdown(accountId: string) {
+  const byMonth = new Map<string, { label: string; revenue: number; orders: number }>();
+  for (const u of getTikTokUploads(accountId)) {
+    const existing = byMonth.get(u.summary.monthKey);
+    if (existing) {
+      existing.revenue += u.summary.grossRevenue;
+      existing.orders += u.summary.orderCount;
+    } else {
+      byMonth.set(u.summary.monthKey, {
+        label: u.summary.periodLabel,
+        revenue: u.summary.grossRevenue,
+        orders: u.summary.orderCount,
+      });
+    }
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([monthKey, data]) => ({
+      monthKey,
+      label: data.label,
+      revenue: round2(data.revenue),
+      orders: data.orders,
+    }));
+}
+
 /**
- * Map registered affiliate accounts to dashboard rows using their latest upload.
- * Returns empty when no accounts are registered.
+ * Map registered affiliate accounts to dashboard rows.
+ * `revenue` / `orders` reflect the active period; `totalRevenue` is all uploads.
  */
-export function tiktokAffiliatesFromAccounts(): TikTokAccount[] {
+export function tiktokAffiliatesFromAccounts(
+  selection: TikTokPeriodSelection = { period: "all" },
+): TikTokAccount[] {
   const profiles = getAffiliateAccounts();
   if (profiles.length === 0) return [];
 
-  return profiles.map((profile) => {
-    const accountUploads = getTikTokUploads(profile.id);
-    const latest = accountUploads[0]?.summary;
-    const previous = accountUploads[1]?.summary;
+  return profiles
+    .map((profile) => {
+      const allUploads = getTikTokUploads(profile.id);
+      const periodUploads = filterUploadsByPeriod(allUploads, selection);
+      const monthlyBreakdown = buildMonthlyBreakdown(profile.id);
+      const totalRevenue = round2(
+        allUploads.reduce((s, u) => s + u.summary.grossRevenue, 0),
+      );
+      const totalOrders = sumUploadOrders(allUploads);
+      const periodRevenue = sumUploadRevenue(periodUploads, "consolidated");
+      const periodOrders = sumUploadOrders(periodUploads);
 
-    if (!latest) {
+      if (allUploads.length === 0) {
+        return {
+          id: profile.id,
+          handle: profile.handle,
+          niche: profile.niche,
+          followers: 0,
+          revenue: 0,
+          commission: 0,
+          orders: 0,
+          conversion: 0,
+          status: "stable" as const,
+          spark: [0, 0, 0],
+          delta: 0,
+          payTo: profile.payTo,
+          totalRevenue: 0,
+          totalOrders: 0,
+          uploadMonths: 0,
+          monthlyBreakdown: [],
+        };
+      }
+
+      const sorted = [...allUploads].sort((a, b) =>
+        b.summary.monthKey.localeCompare(a.summary.monthKey),
+      );
+      const latest = sorted[0]!.summary;
+      const previous = sorted.find((u) => u.summary.monthKey !== latest.monthKey)?.summary;
+
+      const delta = previous
+        ? monthOverMonthDelta(latest.grossRevenue, previous.grossRevenue)
+        : 0;
+
+      let status: TikTokAccount["status"] = "stable";
+      if (delta >= 15) status = "scaling";
+      else if (delta <= -8) status = "at-risk";
+      else if (delta >= 5) status = "warming";
+
+      const spark = monthlySparkForAccount(profile.id, "consolidated");
+      const payTo = latest.split.company >= 1 ? ("company" as const) : profile.payTo;
+      const marginPct =
+        periodRevenue > 0
+          ? round2(
+              (periodUploads.reduce((s, u) => s + u.summary.netProfit, 0) / periodRevenue) * 100,
+            )
+          : latest.marginPct;
+
       return {
         id: profile.id,
         handle: profile.handle,
         niche: profile.niche,
         followers: 0,
-        revenue: 0,
-        commission: 0,
-        orders: 0,
-        conversion: 0,
-        status: "stable" as const,
-        spark: [0, 0, 0],
-        delta: 0,
-        payTo: profile.payTo,
+        revenue: round2(periodRevenue),
+        commission: marginPct,
+        orders: periodOrders,
+        conversion:
+          periodOrders > 0 ? round2((latest.topBrands[0]?.orders ?? periodOrders) / periodOrders * 100) : 0,
+        status,
+        spark: spark.length >= 2 ? spark : [periodRevenue * 0.85, periodRevenue],
+        delta: clampDelta(delta),
+        payTo,
+        totalRevenue,
+        totalOrders,
+        uploadMonths: monthlyBreakdown.length,
+        monthlyBreakdown,
       };
-    }
-
-    const delta = previous
-      ? monthOverMonthDelta(latest.grossRevenue, previous.grossRevenue)
-      : 0;
-
-    let status: TikTokAccount["status"] = "stable";
-    if (delta >= 15) status = "scaling";
-    else if (delta <= -8) status = "at-risk";
-    else if (delta >= 5) status = "warming";
-
-    const dailySpark = latest.daily.slice(-7).map((d) => d.revenue);
-    const spark =
-      dailySpark.length >= 2
-        ? dailySpark
-        : previous
-          ? [previous.grossRevenue * 0.85, previous.grossRevenue * 0.92, latest.grossRevenue]
-          : [latest.grossRevenue * 0.8, latest.grossRevenue * 0.9, latest.grossRevenue];
-
-    const payTo =
-      latest.split.company >= 1 ? ("company" as const) : profile.payTo;
-
-    return {
-      id: profile.id,
-      handle: profile.handle,
-      niche: profile.niche,
-      followers: 0,
-      revenue: round2(latest.grossRevenue),
-      commission: latest.marginPct,
-      orders: latest.orderCount,
-      conversion:
-        latest.orderCount > 0
-          ? round2((latest.topBrands[0]?.orders ?? latest.orderCount) / latest.orderCount * 100)
-          : 0,
-      status,
-      spark,
-      delta: clampDelta(delta),
-      payTo,
-    };
-  }).sort((a, b) => b.revenue - a.revenue);
+    })
+    .sort((a, b) => b.revenue - a.revenue);
 }
 
 /** @deprecated Use tiktokAffiliatesFromAccounts — kept for internal reference. */
-export function tiktokAffiliatesFromUpload(model: TikTokDashboardModel): TikTokAccount[] {
+export function tiktokAffiliatesFromUpload(
+  model: TikTokDashboardModel,
+  selection?: TikTokPeriodSelection,
+): TikTokAccount[] {
   void model;
-  return tiktokAffiliatesFromAccounts();
+  return tiktokAffiliatesFromAccounts(selection ?? { period: "all" });
+}
+
+/** Revenue for a period selection (aggregated across accounts). */
+export function tiktokPeriodRevenue(
+  entity: "avaken" | "personal" | "consolidated",
+  selection: TikTokPeriodSelection,
+): number {
+  return sumUploadRevenue(getFilteredUploads(selection), entity);
+}
+
+/** Net profit for a period selection. */
+export function tiktokPeriodNet(
+  entity: "avaken" | "personal" | "consolidated",
+  selection: TikTokPeriodSelection,
+): number {
+  const uploads = getFilteredUploads(selection);
+  return Math.round(uploads.reduce((s, u) => {
+    if (entity === "avaken") return s + u.summary.company.netProfit;
+    if (entity === "personal") return s + u.summary.personal.netProfit;
+    return s + u.summary.netProfit;
+  }, 0) * 100) / 100;
 }
 
 export function tiktokTotalRevenue(

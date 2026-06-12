@@ -1,14 +1,17 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import type { TikTokViewPeriod } from "@/lib/tiktok/period";
 
-export type Period = "MTD" | "QTD" | "YTD" | "12M";
+/** Dashboard time window for TikTok commission metrics. */
+export type Period = TikTokViewPeriod;
 
-const PERIODS: { id: Period; label: string }[] = [
-  { id: "MTD", label: "MTD" },
-  { id: "QTD", label: "QTD" },
-  { id: "YTD", label: "YTD" },
-  { id: "12M", label: "12M" },
+const PERIODS: { id: Period; label: string; hint: string }[] = [
+  { id: "all", label: "All", hint: "Every uploaded month combined" },
+  { id: "latest", label: "Latest", hint: "Most recent uploaded month" },
+  { id: "month", label: "Month", hint: "Pick a specific uploaded month" },
+  { id: "qtd", label: "QTD", hint: "Current calendar quarter" },
+  { id: "ytd", label: "YTD", hint: "Current calendar year" },
 ];
 
 export function PeriodToggle({
@@ -25,6 +28,8 @@ export function PeriodToggle({
         return (
           <button
             key={p.id}
+            type="button"
+            title={p.hint}
             onClick={() => onChange(p.id)}
             className={cn(
               "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",

@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "./page-header";
-import { currentVatPeriod, listVatPeriods } from "@/lib/data/queries";
+import { currentVatPeriod, listVatPeriods, vatNetDue } from "@/lib/data/queries";
+import { isRealDataMode } from "@/lib/data/real-data-mode";
 import { buildVatReturn } from "@/lib/tax/uk-vat";
 import { formatCurrency, formatDate } from "@/lib/format";
 
@@ -26,10 +27,29 @@ export function VatView() {
   const current = currentVatPeriod();
   const ret = buildVatReturn(current);
   const periods = listVatPeriods();
+  const uploadVatDue = vatNetDue();
   const due = new Date(current.dueDate);
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), []);
   const daysToDue = now == null ? null : Math.ceil((+due - now) / 86400_000);
+
+  if (isRealDataMode()) {
+    return (
+      <div>
+        <PageHeader
+          title="VAT"
+          description="Output VAT estimated from uploaded TikTok company commission (YTD)."
+        />
+        <Card className="p-6">
+          <p className="text-xs uppercase tracking-wide text-subtle">Estimated output VAT (YTD)</p>
+          <p className="tabular mt-2 text-4xl font-semibold">{formatCurrency(uploadVatDue)}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Calculated from your uploaded earnings reports. Upload each month to keep this current.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
