@@ -60,25 +60,29 @@ export function AffiliatesView() {
   const periodDesc = periodLabel(selection);
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="TikTok Shop affiliates"
         description={
-          hasRealData
-            ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${formatCurrency(periodRevenue)} ${periodDesc.toLowerCase()} · ${formatCurrency(totalAllTime)} all-time`
-            : "Add your creator accounts and upload monthly earnings reports"
+          selectedAccountId
+            ? "Account insights · monthly and all-time breakdown from your uploads"
+            : hasRealData
+              ? `${accounts.length} account${accounts.length === 1 ? "" : "s"} · ${formatCurrency(periodRevenue)} ${periodDesc.toLowerCase()} · ${formatCurrency(totalAllTime)} all-time`
+              : "Add your creator accounts and upload monthly earnings reports"
         }
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/import/tiktok">
-              <Upload className="size-3.5" /> Upload report
-            </Link>
-          </Button>
+          !selectedAccountId ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/import/tiktok">
+                <Upload className="size-3.5" /> Upload report
+              </Link>
+            </Button>
+          ) : undefined
         }
       />
 
-      {hasRealData && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+      {!selectedAccountId && hasRealData && (
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-2">
           <PeriodToggle value={period} onChange={setPeriod} />
           {period === "month" && uploadedMonths.length > 0 && (
             <MonthPicker months={uploadedMonths} value={monthKey} onChange={setMonthKey} />
@@ -86,18 +90,14 @@ export function AffiliatesView() {
         </div>
       )}
 
-      {hasTikTokUploads() && (
-        <div className="mb-6">
-          <AffiliateInsightsSection insights={portfolioInsights} />
+      {!selectedAccountId && (
+        <div className="mx-auto max-w-4xl">
+          <TikTokAccountManager compact />
         </div>
       )}
 
-      <div className="mb-6">
-        <TikTokAccountManager compact />
-      </div>
-
-      {withRevenue.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {!selectedAccountId && withRevenue.length > 0 && (
+        <div className="mx-auto grid max-w-4xl grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label={periodDesc} value={formatCurrency(periodRevenue)} accent="#10b981" />
           <Stat label="All-time revenue" value={formatCurrency(totalAllTime)} accent="#34d399" />
           <Stat label="Orders (period)" value={formatNumber(totalOrders)} accent="#a78bfa" />
@@ -105,130 +105,139 @@ export function AffiliatesView() {
         </div>
       )}
 
-      {accounts.length === 0 ? (
-        <Card className="border-dashed p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No affiliate accounts yet. Add your TikTok handles above, then upload monthly earnings
-            reports from TikTok Shop → Affiliate → Earnings.
-          </p>
-          <Button asChild className="mt-4">
-            <Link href="/import/tiktok">Upload your first report</Link>
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {accounts.map((a) => {
-            const aov = a.orders > 0 ? a.revenue / a.orders : 0;
-            const sharePct = periodRevenue > 0 ? (a.revenue / periodRevenue) * 100 : 0;
-            const hasData = a.revenue > 0 || (a.totalRevenue ?? 0) > 0;
-            return (
-              <Card
-                key={a.id}
-                role={hasData ? "button" : undefined}
-                tabIndex={hasData ? 0 : undefined}
-                onClick={hasData ? () => setSelectedAccountId(a.id) : undefined}
-                onKeyDown={
-                  hasData
-                    ? (e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedAccountId(a.id);
-                        }
-                      }
-                    : undefined
-                }
-                className={cn(
-                  "relative overflow-hidden p-5 transition-colors",
-                  hasData &&
-                    "cursor-pointer hover:border-primary/30 hover:bg-white/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
-                )}
-              >
-                <div
-                  className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full opacity-20 blur-3xl"
-                  style={{ background: a.delta >= 0 ? "#10b981" : "#f43f5e" }}
-                />
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold tracking-tight">{a.handle}</p>
-                    <p className="text-[11px] text-subtle">{a.niche}</p>
-                  </div>
-                  {a.revenue > 0 ? (
-                    <Badge tone={STATUS_TONE[a.status]}>{STATUS_LABEL[a.status]}</Badge>
-                  ) : (
-                    <Badge tone="info">No upload</Badge>
-                  )}
-                </div>
-
-                {hasData ? (
-                  <>
-                    <div className="mt-4 flex items-end justify-between">
-                      <div>
-                        <p className="tabular text-2xl font-semibold">{formatCurrency(a.revenue)}</p>
-                        <p className="text-[11px] text-subtle">{periodDesc}</p>
-                        {(a.totalRevenue ?? 0) > a.revenue && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {formatCurrency(a.totalRevenue ?? 0)} all-time · {a.uploadMonths ?? 0} mo
-                          </p>
-                        )}
-                        <Delta value={a.delta} className="mt-1" />
-                      </div>
-                      <Sparkline
-                        data={a.spark}
-                        color={a.delta >= 0 ? "#10b981" : "#f43f5e"}
-                        width={110}
-                        height={36}
-                      />
-                    </div>
-
-                    {a.monthlyBreakdown && a.monthlyBreakdown.length > 0 && (
-                      <div className="mt-3 space-y-1 rounded-lg bg-white/[0.02] p-2 ring-1 ring-white/5">
-                        {a.monthlyBreakdown.map((m) => (
-                          <div
-                            key={m.monthKey}
-                            className="flex items-center justify-between text-[11px]"
-                          >
-                            <span className="text-subtle">{m.label}</span>
-                            <span className="tabular font-medium">
-                              {formatCurrency(m.revenue)} · {formatNumber(m.orders)} orders
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-                      <Tile label="Orders" value={formatNumber(a.orders)} />
-                      <Tile label="AOV" value={formatCurrency(aov)} />
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between text-[11px] text-subtle">
-                      <span>{a.payTo === "company" ? "Avaken Ltd" : "Personal"} payout</span>
-                      <span className="flex items-center gap-0.5 text-primary">
-                        View insights <ChevronRight className="size-3" />
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-4 rounded-xl border border-dashed border-border/60 p-4 text-center">
-                    <p className="text-[11px] text-subtle">Upload a monthly report for this account</p>
-                    <Button asChild variant="outline" size="sm" className="mt-2">
-                      <Link href="/import/tiktok" onClick={(e) => e.stopPropagation()}>
-                        Upload
-                      </Link>
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {selectedAccountId && (
+      {selectedAccountId ? (
         <AffiliateAccountDetail
           accountId={selectedAccountId}
           onClose={() => setSelectedAccountId(null)}
+          layout="inline"
         />
+      ) : (
+        <>
+          {hasTikTokUploads() && (
+            <div className="mx-auto max-w-4xl">
+              <AffiliateInsightsSection insights={portfolioInsights} />
+            </div>
+          )}
+
+          {accounts.length === 0 ? (
+            <Card className="mx-auto max-w-4xl border-dashed p-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                No affiliate accounts yet. Add your TikTok handles above, then upload monthly earnings
+                reports from TikTok Shop → Affiliate → Earnings.
+              </p>
+              <Button asChild className="mt-4">
+                <Link href="/import/tiktok">Upload your first report</Link>
+              </Button>
+            </Card>
+          ) : (
+            <div className="mx-auto grid max-w-5xl grid-cols-1 gap-3 md:grid-cols-2">
+              {accounts.map((a) => {
+                const aov = a.orders > 0 ? a.revenue / a.orders : 0;
+                const sharePct = periodRevenue > 0 ? (a.revenue / periodRevenue) * 100 : 0;
+                const hasData = a.revenue > 0 || (a.totalRevenue ?? 0) > 0;
+                return (
+                  <Card
+                    key={a.id}
+                    role={hasData ? "button" : undefined}
+                    tabIndex={hasData ? 0 : undefined}
+                    onClick={hasData ? () => setSelectedAccountId(a.id) : undefined}
+                    onKeyDown={
+                      hasData
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedAccountId(a.id);
+                            }
+                          }
+                        : undefined
+                    }
+                    className={cn(
+                      "relative overflow-hidden p-5 transition-colors",
+                      hasData &&
+                        "cursor-pointer hover:border-primary/30 hover:bg-white/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                    )}
+                  >
+                    <div
+                      className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full opacity-20 blur-3xl"
+                      style={{ background: a.delta >= 0 ? "#10b981" : "#f43f5e" }}
+                    />
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold tracking-tight">{a.handle}</p>
+                        <p className="text-[11px] text-subtle">{a.niche}</p>
+                      </div>
+                      {a.revenue > 0 ? (
+                        <Badge tone={STATUS_TONE[a.status]}>{STATUS_LABEL[a.status]}</Badge>
+                      ) : (
+                        <Badge tone="info">No upload</Badge>
+                      )}
+                    </div>
+
+                    {hasData ? (
+                      <>
+                        <div className="mt-4 flex items-end justify-between">
+                          <div>
+                            <p className="tabular text-2xl font-semibold">{formatCurrency(a.revenue)}</p>
+                            <p className="text-[11px] text-subtle">{periodDesc}</p>
+                            {(a.totalRevenue ?? 0) > a.revenue && (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {formatCurrency(a.totalRevenue ?? 0)} all-time · {a.uploadMonths ?? 0} mo
+                              </p>
+                            )}
+                            <Delta value={a.delta} className="mt-1" />
+                          </div>
+                          <Sparkline
+                            data={a.spark}
+                            color={a.delta >= 0 ? "#10b981" : "#f43f5e"}
+                            width={110}
+                            height={36}
+                          />
+                        </div>
+
+                        {a.monthlyBreakdown && a.monthlyBreakdown.length > 0 && (
+                          <div className="mt-3 space-y-1 rounded-lg bg-white/[0.02] p-2 ring-1 ring-white/5">
+                            {a.monthlyBreakdown.map((m) => (
+                              <div
+                                key={m.monthKey}
+                                className="flex items-center justify-between text-[11px]"
+                              >
+                                <span className="text-subtle">{m.label}</span>
+                                <span className="tabular font-medium">
+                                  {formatCurrency(m.revenue)} · {formatNumber(m.orders)} orders
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+                          <Tile label="Orders" value={formatNumber(a.orders)} />
+                          <Tile label="AOV" value={formatCurrency(aov)} />
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between text-[11px] text-subtle">
+                          <span>{a.payTo === "company" ? "Avaken Ltd" : "Personal"} payout</span>
+                          <span className="flex items-center gap-0.5 text-primary">
+                            View insights <ChevronRight className="size-3" />
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-4 rounded-xl border border-dashed border-border/60 p-4 text-center">
+                        <p className="text-[11px] text-subtle">Upload a monthly report for this account</p>
+                        <Button asChild variant="outline" size="sm" className="mt-2">
+                          <Link href="/import/tiktok" onClick={(e) => e.stopPropagation()}>
+                            Upload
+                          </Link>
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

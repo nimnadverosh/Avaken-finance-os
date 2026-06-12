@@ -86,7 +86,7 @@ export function AffiliateInsightsList({
 
 export function AffiliateInsightsSection({ insights }: { insights: Insight[] }) {
   return (
-    <Card className="overflow-hidden border-border/60 bg-card/80 backdrop-blur-xl">
+    <Card className="overflow-hidden rounded-2xl border border-primary/20 bg-card/80 shadow-[0_8px_32px_-12px_rgba(16,185,129,0.12)] backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
         <div className="flex items-center gap-2">
           <div className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-violet/30 to-emerald/20 ring-1 ring-violet/25">
