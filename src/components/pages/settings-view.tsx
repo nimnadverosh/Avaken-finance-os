@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "./page-header";
 import { advancedImportLinks } from "@/lib/nav";
+import { TikTokSettingsCard } from "@/components/tiktok/tiktok-settings-card";
+import { TikTokUploadHistory } from "@/components/tiktok/tiktok-upload-history";
 
 const CONNECTIONS = [
   { id: "stripe", name: "Stripe", description: "Affiliate revenue → Tide payouts", status: "connected", color: "#635bff", initial: "S" },
@@ -58,6 +60,13 @@ export function SettingsView() {
             <Toggle label="Personal allowance taper" desc="Apply for income > £100k" on />
           </div>
         </Card>
+
+        {/* TikTok earnings split + uploads */}
+        <TikTokSettingsCard />
+
+        <div className="lg:col-span-3">
+          <TikTokUploadHistory />
+        </div>
 
         {/* Connections */}
         <Card className="p-5 lg:col-span-3">

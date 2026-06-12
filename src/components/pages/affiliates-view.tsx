@@ -4,8 +4,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Delta } from "@/components/ui/delta";
+import { useMemo } from "react";
 import { PageHeader } from "./page-header";
 import { allAffiliates } from "@/lib/data/queries";
+import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 const STATUS_TONE = {
@@ -23,7 +25,8 @@ const STATUS_LABEL = {
 } as const;
 
 export function AffiliatesView() {
-  const accounts = allAffiliates();
+  const version = useMockDataVersion();
+  const accounts = useMemo(() => allAffiliates(), [version]);
   const totalRevenue = accounts.reduce((a, b) => a + b.revenue, 0);
   const totalOrders = accounts.reduce((a, b) => a + b.orders, 0);
   const totalFollowers = accounts.reduce((a, b) => a + b.followers, 0);

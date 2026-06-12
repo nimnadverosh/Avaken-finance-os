@@ -32,6 +32,13 @@ import { getDailyFinancialSnapshot } from "./daily-updates";
 import { getConsolidatedFinancialSummary } from "./personal-summary";
 import { corpTax, type CorpTaxBreakdown } from "@/lib/tax/uk-corp-tax";
 import { ukPersonalTax, type TaxBreakdown } from "@/lib/tax/uk-income-tax";
+import {
+  getTikTokDashboardModel,
+  tiktokInsights,
+  tiktokRevenueSeries,
+  tiktokScaledAffiliates,
+} from "@/lib/tiktok/dashboard";
+import { clampDelta } from "@/lib/tiktok/model";
 
 const VAT_RATE = 0.2;
 
@@ -101,6 +108,31 @@ export function netWorth(entity: Entity): number {
 
 /* ---- Revenue / expense series, entity aware ---- */
 export function getRevenueSeries(entity: Entity): SeriesPoint[] {
+  // When monthly TikTok reports have been uploaded, drive the whole revenue
+  // picture from them (smart-adjusted, entity-split) instead of the seed series.
+  const model = getTikTokDashboardModel();
+  if (model) {
+    if (entity === "avaken") return tiktokRevenueSeries(model, "avaken");
+    if (entity === "personal") {
+      // Personal TikTok share on top of a steady salary/other-income baseline.
+      const PERSONAL_BASELINE_REVENUE = 1200;
+      const PERSONAL_BASELINE_EXPENSE = 900;
+      return tiktokRevenueSeries(model, "personal").map((p) => {
+        const revenue = p.revenue! + PERSONAL_BASELINE_REVENUE;
+        const expenses = p.expenses! + PERSONAL_BASELINE_EXPENSE;
+        return { label: p.label, revenue, expenses, net: revenue - expenses };
+      });
+    }
+    const av = getRevenueSeries("avaken");
+    const pe = getRevenueSeries("personal");
+    return av.map((p, i) => ({
+      label: p.label,
+      revenue: p.revenue! + pe[i].revenue!,
+      expenses: p.expenses! + pe[i].expenses!,
+      net: p.net! + pe[i].net!,
+    }));
+  }
+
   if (entity === "avaken") return revenueSeries;
   if (entity === "personal") {
     // Personal income = salary + investment growth proxy
@@ -225,12 +257,18 @@ export function monthlySubscriptionSpend(entity: Entity): number {
 }
 
 /* ---- Affiliate ---- */
+/** The six TikTok accounts, rescaled to the latest upload's company revenue when present. */
+function effectiveAffiliates(): TikTokAccount[] {
+  const model = getTikTokDashboardModel();
+  return model ? tiktokScaledAffiliates(model) : tiktokAccounts;
+}
+
 export function affiliateRevenue(): number {
-  return sum(tiktokAccounts.map((t) => t.revenue));
+  return sum(effectiveAffiliates().map((t) => t.revenue));
 }
 
 export function topAffiliates(limit = 6): TikTokAccount[] {
-  return [...tiktokAccounts].sort((a, b) => b.revenue - a.revenue).slice(0, limit);
+  return [...effectiveAffiliates()].sort((a, b) => b.revenue - a.revenue).slice(0, limit);
 }
 
 /* ---- Accounts strip ---- */
@@ -297,7 +335,7 @@ export function listVatPeriods(): VatPeriod[] {
 
 /* ---- TikTok ---- */
 export function allAffiliates(): TikTokAccount[] {
-  return [...tiktokAccounts];
+  return [...effectiveAffiliates()];
 }
 
 /* ---- Portfolio ---- */
@@ -332,12 +370,16 @@ export function getAuditLog(entity: Entity, limit = 20): AuditEntry[] {
 
 /* ---- Insights ---- */
 export function getInsights(entity: Entity, limit = 4): Insight[] {
+  // Surface freshly-derived TikTok insights first when reports are uploaded.
+  const model = getTikTokDashboardModel();
+  const dynamic = model && entity !== "personal" ? tiktokInsights(model) : [];
+
   const filtered = insights.filter((i) => {
     if (entity === "consolidated") return true;
     if (entity === "personal") return i.tag === "Subscriptions";
     return true;
   });
-  return filtered.slice(0, limit);
+  return [...dynamic, ...filtered].slice(0, limit);
 }
 
 /* ---- KPI deck for dashboard ---- */
@@ -345,8 +387,9 @@ export function getKpis(entity: Entity): Kpi[] {
   const rev = getRevenueSeries(entity);
   const last = rev[rev.length - 1];
   const prev = rev[rev.length - 2];
-  const revDelta = prev.revenue ? ((last.revenue! - prev.revenue!) / prev.revenue!) * 100 : 0;
-  const netDelta = prev.net ? ((last.net! - prev.net!) / prev.net!) * 100 : 0;
+  // Clamp to a sane band so a breakout upload month (small base → huge %) reads realistically.
+  const revDelta = clampDelta(prev.revenue ? ((last.revenue! - prev.revenue!) / prev.revenue!) * 100 : 0);
+  const netDelta = clampDelta(prev.net ? ((last.net! - prev.net!) / prev.net!) * 100 : 0);
 
   const cash = cashBalance(entity);
   const nw = netWorth(entity);

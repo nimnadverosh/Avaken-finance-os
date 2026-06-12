@@ -10,6 +10,7 @@ import {
   Percent,
   ShieldCheck,
   Sparkles,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ export const navItems: NavItem[] = [
   { label: "Daily Planner", href: "/planner", icon: CalendarCheck, group: "Plan" },
 
   { label: "Affiliates", href: "/affiliates", icon: Music2, group: "Avaken" },
+  { label: "TikTok Upload", href: "/import/tiktok", icon: Upload, badge: "new", group: "Avaken" },
   { label: "Reserves", href: "/tax-clarity", icon: ShieldCheck, group: "Avaken" },
   { label: "VAT Return", href: "/vat", icon: Percent, badge: "Q4", group: "Avaken" },
   { label: "Year Plan", href: "/tax", icon: Landmark, group: "Avaken" },
@@ -44,6 +46,11 @@ export const navGroups = ["Overview", "Plan", "Avaken", "Wealth", "Reporting"] a
 
 /** Advanced import tools — linked from Settings, not the main sidebar. */
 export const advancedImportLinks = [
+  {
+    label: "TikTok monthly upload",
+    href: "/import/tiktok",
+    description: "Parse a TikTok Shop earnings .xlsx and refresh the dashboard",
+  },
   {
     label: "Screenshot import",
     href: "/import/screenshots",
