@@ -5,7 +5,7 @@ import { ArrowUpRight, Download, FileBarChart2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "./kpi-card";
-import { MorningQuickUpdate } from "./morning-quick-update";
+import { HermesChat } from "./hermes-chat";
 import { PersonalSummaryCards } from "./personal-summary-cards";
 import { ReserveGauge } from "./reserve-gauge";
 import { AccountsStrip } from "./accounts-strip";
@@ -135,7 +135,7 @@ export function Dashboard() {
           </div>
         </div>
 
-        <MorningQuickUpdate />
+        <HermesChat />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {kpis.map((k, i) => (
