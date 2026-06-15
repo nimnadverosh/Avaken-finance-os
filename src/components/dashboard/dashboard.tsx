@@ -66,8 +66,14 @@ export function Dashboard() {
   );
 
   const kpis = useMemo(() => getKpis(entity, selection), [entity, mockDataVersion, selection]);
-  const revenueSeries = useMemo(() => getRevenueSeries(entity), [entity, mockDataVersion]);
-  const cashflowSeries = useMemo(() => getCashflowSeries(entity), [entity, mockDataVersion]);
+  const revenueSeries = useMemo(
+    () => getRevenueSeries(entity, selection),
+    [entity, mockDataVersion, selection],
+  );
+  const cashflowSeries = useMemo(
+    () => getCashflowSeries(entity, selection),
+    [entity, mockDataVersion, selection],
+  );
   const expenseBreakdown = useMemo(
     () => getExpenseBreakdown(entity, selection),
     [entity, mockDataVersion, selection],
@@ -169,7 +175,7 @@ export function Dashboard() {
               <h3 className="text-sm font-semibold tracking-tight">Revenue vs net profit</h3>
               <p className="text-[11px] text-subtle">
                 {tiktokModel
-                  ? `${tiktokModel.series.length} uploaded month${tiktokModel.series.length === 1 ? "" : "s"}`
+                  ? `${revenueSeries.length} month${revenueSeries.length === 1 ? "" : "s"} · ${periodDesc}`
                   : "Upload TikTok reports to populate"}
               </p>
             </div>
@@ -211,7 +217,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
             <div>
               <h3 className="text-sm font-semibold tracking-tight">Cashflow</h3>
-              <p className="text-[11px] text-subtle">Inflow vs outflow per uploaded month</p>
+              <p className="text-[11px] text-subtle">Inflow vs outflow · {periodDesc}</p>
             </div>
             <Legend
               items={[

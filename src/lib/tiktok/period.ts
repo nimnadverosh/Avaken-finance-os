@@ -141,6 +141,30 @@ export function periodLabel(selection: TikTokPeriodSelection, now = new Date()):
   }
 }
 
+/**
+ * Best period for tax/VAT estimates from uploads.
+ * Uses calendar YTD when uploads exist for the current year; otherwise all uploads.
+ */
+export function effectiveTaxSelection(now = new Date()): TikTokPeriodSelection {
+  const uploads = getTikTokUploads();
+  const ytd = filterUploadsByPeriod(uploads, { period: "ytd" }, now);
+  if (ytd.length > 0) return { period: "ytd" };
+  if (uploads.length > 0) return { period: "all" };
+  return { period: "ytd" };
+}
+
+/** Label for the tax selection (may differ from calendar YTD). */
+export function taxPeriodLabel(now = new Date()): string {
+  const sel = effectiveTaxSelection(now);
+  if (sel.period === "all") {
+    const years = [...new Set(getTikTokUploads().map((u) => u.summary.year))].sort();
+    if (years.length === 1) return `Tax year ${years[0]}`;
+    if (years.length > 1) return `Uploads ${years[0]}–${years[years.length - 1]}`;
+    return "All uploads";
+  }
+  return periodLabel(sel, now);
+}
+
 /** Monthly spark data for an account — one point per uploaded month. */
 export function monthlySparkForAccount(
   accountId: string,

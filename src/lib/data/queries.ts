@@ -46,13 +46,17 @@ import {
 import { hasAffiliateAccounts } from "@/lib/tiktok/accounts";
 import { hasTikTokUploads } from "@/lib/tiktok/store";
 import {
+  effectiveTaxSelection,
   getFilteredUploads,
   periodDelta,
   periodLabel,
+  sumUploadOrders,
+  taxPeriodLabel,
   type TikTokPeriodSelection,
 } from "@/lib/tiktok/period";
 import { clampDelta } from "@/lib/tiktok/model";
 import { getAffiliatePortfolioInsights } from "@/lib/tiktok/affiliate-insights";
+import { formatCurrency } from "@/lib/format";
 
 export type { TikTokPeriodSelection };
 export { periodLabel, listUploadedMonths } from "@/lib/tiktok/period";
@@ -132,12 +136,15 @@ export function netWorth(entity: Entity): number {
 }
 
 /* ---- Revenue / expense series, entity aware ---- */
-export function getRevenueSeries(entity: Entity): SeriesPoint[] {
+export function getRevenueSeries(
+  entity: Entity,
+  selection: TikTokPeriodSelection = { period: "all" },
+): SeriesPoint[] {
   const model = getTikTokDashboardModel();
   if (model) {
-    if (entity === "avaken") return tiktokRevenueSeries(model, "avaken");
-    if (entity === "personal") return tiktokRevenueSeries(model, "personal");
-    return tiktokRevenueSeries(model, "consolidated");
+    if (entity === "avaken") return tiktokRevenueSeries(model, "avaken", selection);
+    if (entity === "personal") return tiktokRevenueSeries(model, "personal", selection);
+    return tiktokRevenueSeries(model, "consolidated", selection);
   }
 
   if (isRealDataMode()) return [];
@@ -154,7 +161,7 @@ export function getRevenueSeries(entity: Entity): SeriesPoint[] {
     });
   }
   // consolidated
-  const personal = getRevenueSeries("personal");
+  const personal = getRevenueSeries("personal", selection);
   return revenueSeries.map((p, i) => ({
     label: p.label,
     revenue: p.revenue! + personal[i].revenue!,
@@ -163,22 +170,25 @@ export function getRevenueSeries(entity: Entity): SeriesPoint[] {
   }));
 }
 
-export function getCashflowSeries(entity: Entity): SeriesPoint[] {
+export function getCashflowSeries(
+  entity: Entity,
+  selection: TikTokPeriodSelection = { period: "all" },
+): SeriesPoint[] {
   const model = getTikTokDashboardModel();
   if (model) {
-    if (entity === "avaken") return tiktokCashflowSeries(model, "avaken");
-    if (entity === "personal") return tiktokCashflowSeries(model, "personal");
-    return tiktokCashflowSeries(model, "consolidated");
+    if (entity === "avaken") return tiktokCashflowSeries(model, "avaken", selection);
+    if (entity === "personal") return tiktokCashflowSeries(model, "personal", selection);
+    return tiktokCashflowSeries(model, "consolidated", selection);
   }
 
   if (isRealDataMode()) return [];
 
   if (entity === "avaken") return cashflowSeries;
   if (entity === "personal") {
-    const rev = getRevenueSeries("personal");
+    const rev = getRevenueSeries("personal", selection);
     return rev.map((p) => ({ label: p.label, inflow: p.revenue!, outflow: -p.expenses! }));
   }
-  const personal = getCashflowSeries("personal");
+  const personal = getCashflowSeries("personal", selection);
   return cashflowSeries.map((p, i) => ({
     label: p.label,
     inflow: p.inflow! + personal[i].inflow!,
@@ -224,11 +234,12 @@ export function currentVatPeriod() {
   return vatPeriods.find((p) => p.status === "open") ?? vatPeriods[vatPeriods.length - 1];
 }
 
-export function vatNetDue(): number {
+export function vatNetDue(selection?: TikTokPeriodSelection): number {
   const model = getTikTokDashboardModel();
   if (model) {
+    const sel = selection ?? effectiveTaxSelection();
     return Math.round(
-      getFilteredUploads({ period: "ytd" }).reduce((s, u) => s + u.summary.company.vatOnSales, 0) * 100,
+      getFilteredUploads(sel).reduce((s, u) => s + u.summary.company.vatOnSales, 0) * 100,
     ) / 100;
   }
   if (isRealDataMode()) return 0;
@@ -237,18 +248,19 @@ export function vatNetDue(): number {
 }
 
 /* ---- Tax ---- */
-/** Avaken FY profit — from uploaded TikTok months when available, else mock. */
-export function avakenAnnualProfit(): number {
+/** Avaken profit — from uploaded TikTok months when available, else mock. */
+export function avakenAnnualProfit(selection?: TikTokPeriodSelection): number {
   const model = getTikTokDashboardModel();
   if (model) {
-    return sum(tiktokRevenueSeries(model, "avaken").map((r) => r.net!));
+    const sel = selection ?? effectiveTaxSelection();
+    return sum(tiktokRevenueSeries(model, "avaken", sel).map((r) => r.net!));
   }
   if (isRealDataMode()) return 0;
   return sum(revenueSeries.map((r) => r.net!));
 }
 
-export function corpTaxEstimate(): CorpTaxBreakdown {
-  return corpTax(avakenAnnualProfit());
+export function corpTaxEstimate(selection?: TikTokPeriodSelection): CorpTaxBreakdown {
+  return corpTax(avakenAnnualProfit(selection));
 }
 
 export interface Reserve {
@@ -266,8 +278,11 @@ export function getReserves(entity: Entity): Reserve[] {
   const ledger = getLedgerAccounts();
   const vatReserve = ledger.find((a) => a.id === "tide-vat")!.balance;
   const corpReserve = ledger.find((a) => a.id === "tide-tax")!.balance;
-  const vatEst = vatNetDue();
-  const corpEst = corpTaxEstimate().tax;
+  const taxSel = effectiveTaxSelection();
+  const vatEst = vatNetDue(taxSel);
+  const corpEst = corpTaxEstimate(taxSel).tax;
+  const taxLabel = taxPeriodLabel();
+  const profit = avakenAnnualProfit(taxSel);
 
   return [
     {
@@ -277,7 +292,9 @@ export function getReserves(entity: Entity): Reserve[] {
       coverage: vatEst === 0 ? 1 : vatReserve / vatEst,
       accent: "#f59e0b",
       accountName: "Tide · VAT Reserve",
-      hint: `Q4 estimate £${Math.round(vatEst).toLocaleString()} · due ${new Date(currentVatPeriod().dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`,
+      hint: hasTikTokUploads()
+        ? `${taxLabel} · output VAT ${formatCurrency(vatEst, { decimals: 0 })} from uploads`
+        : `Q4 estimate £${Math.round(vatEst).toLocaleString()} · due ${new Date(currentVatPeriod().dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`,
     },
     {
       label: "Corp Tax Reserve",
@@ -286,7 +303,9 @@ export function getReserves(entity: Entity): Reserve[] {
       coverage: corpEst === 0 ? 1 : corpReserve / corpEst,
       accent: "#a78bfa",
       accountName: "Tide · Corp Tax Reserve",
-      hint: `On rolling £${Math.round(avakenAnnualProfit()).toLocaleString()} profit (${corpTaxEstimate().band} rate band)`,
+      hint: hasTikTokUploads()
+        ? `${taxLabel} · on £${Math.round(profit).toLocaleString()} company profit (${corpTaxEstimate(taxSel).band} rate)`
+        : `On rolling £${Math.round(profit).toLocaleString()} profit (${corpTaxEstimate(taxSel).band} rate band)`,
     },
   ];
 }
@@ -420,7 +439,8 @@ export function portfolioTotals() {
 /* ---- Personal income tax ---- */
 export function personalTaxEstimate(): TaxBreakdown {
   if (isRealDataMode()) {
-    const personalIncome = tiktokPeriodRevenue("personal", { period: "ytd" });
+    const sel = effectiveTaxSelection();
+    const personalIncome = tiktokPeriodRevenue("personal", sel);
     return ukPersonalTax(Math.min(personalIncome, 12570), Math.max(0, personalIncome - 12570));
   }
   return ukPersonalTax(payrollPlan.salary, payrollPlan.dividends);
@@ -473,12 +493,13 @@ export function getKpis(
   selection: TikTokPeriodSelection = { period: "all" },
 ): Kpi[] {
   const model = getTikTokDashboardModel();
-  const rev = getRevenueSeries(entity);
+  const rev = getRevenueSeries(entity, selection);
   const e =
     entity === "consolidated" ? "consolidated" : entity === "avaken" ? "avaken" : "personal";
 
   let lastRevenue: number;
   let lastNet: number;
+  let lastOrders: number;
   let revDelta: number;
   let netDelta: number;
   let revSpark: number[];
@@ -488,6 +509,7 @@ export function getKpis(
   if (model) {
     lastRevenue = tiktokPeriodRevenue(e, selection);
     lastNet = tiktokPeriodNet(e, selection);
+    lastOrders = sumUploadOrders(getFilteredUploads(selection));
     const uploads = getFilteredUploads(selection);
     revDelta = clampDelta(periodDelta(uploads, e));
     const prevSelection =
@@ -503,16 +525,18 @@ export function getKpis(
     netDelta = prevSelection;
     revSpark = rev.map((p) => p.revenue!);
     netSpark = rev.map((p) => p.net!);
-    revenueSub = `${periodLabel(selection)} · ${model.uploadCount} upload${model.uploadCount === 1 ? "" : "s"}`;
+    revenueSub = `${periodLabel(selection)} · ${lastOrders.toLocaleString()} orders`;
   } else if (isRealDataMode()) {
     lastRevenue = 0;
     lastNet = 0;
+    lastOrders = 0;
     revDelta = 0;
     netDelta = 0;
     revSpark = [];
     netSpark = [];
     revenueSub = "Upload TikTok reports";
   } else {
+    lastOrders = 0;
     const last = rev[rev.length - 1];
     const prev = rev[rev.length - 2];
     lastRevenue = last?.revenue ?? 0;
@@ -556,7 +580,7 @@ export function getKpis(
       delta: netDelta,
       spark: netSpark.length > 0 ? netSpark : [0],
       accent: "#34d399",
-      sub: lastRevenue > 0 ? `${marginPct}% margin` : "after est. costs",
+      sub: lastRevenue > 0 ? `${marginPct}% margin · est. costs` : "after est. costs",
     },
     {
       id: "cash",
@@ -595,13 +619,13 @@ export function getKpis(
     } else if (model) {
       base.push({
         id: "vat",
-        label: "Output VAT (YTD)",
-        value: vatNetDue(),
+        label: "Output VAT",
+        value: vatNetDue(effectiveTaxSelection()),
         format: "currency",
         delta: 0,
         spark: revSpark,
         accent: "#f59e0b",
-        sub: "from uploaded company commission",
+        sub: `${taxPeriodLabel()} · company commission`,
       });
     }
     if (!isRealDataMode()) {

@@ -122,7 +122,27 @@ export function tiktokLatestNet(
 export function tiktokRevenueSeries(
   model: TikTokDashboardModel,
   entity: "avaken" | "personal" | "consolidated",
+  selection?: TikTokPeriodSelection,
 ): SeriesPoint[] {
+  const uploads = selection
+    ? filterUploadsByPeriod(getTikTokUploads(), selection)
+    : getTikTokUploads();
+  const months = aggregateByMonth(uploads);
+  if (months.length > 0) {
+    return months.map((s) => {
+      const revenue =
+        entity === "avaken"
+          ? s.company.revenue
+          : entity === "personal"
+            ? s.personal.revenue
+            : s.grossRevenue;
+      const expenses = round2(
+        Math.max(SMART_ADJUSTMENT.minMonthlyExpense * 0.4, revenue * SMART_ADJUSTMENT.expenseRatio),
+      );
+      return { label: s.shortMonth, revenue, expenses, net: round2(revenue - expenses) };
+    });
+  }
+
   return model.series.map((p) => {
     const revenue =
       entity === "avaken" ? p.company : entity === "personal" ? p.personal : p.gross;
@@ -136,8 +156,9 @@ export function tiktokRevenueSeries(
 export function tiktokCashflowSeries(
   model: TikTokDashboardModel,
   entity: "avaken" | "personal" | "consolidated",
+  selection?: TikTokPeriodSelection,
 ): SeriesPoint[] {
-  return tiktokRevenueSeries(model, entity).map((p) => ({
+  return tiktokRevenueSeries(model, entity, selection).map((p) => ({
     label: p.label,
     inflow: p.revenue!,
     outflow: -p.expenses!,
