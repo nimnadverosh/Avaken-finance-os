@@ -191,17 +191,21 @@ export function TikTokAccountManager({ compact = false }: TikTokAccountManagerPr
   );
 }
 
-/** Inline account picker used during Excel import. */
+/** Inline account picker used before or during Excel import. */
 export function TikTokAccountSelect({
   value,
   onChange,
   suggestedHandle,
   suggestedPayTo = "personal",
+  title = "Assign to account",
+  description,
 }: {
   value: string | null;
   onChange: (accountId: string) => void;
   suggestedHandle?: string;
   suggestedPayTo?: "personal" | "company";
+  title?: string;
+  description?: string;
 }) {
   const version = useMockDataVersion();
   const accounts = useMemo(() => getAffiliateAccounts(), [version]);
@@ -254,11 +258,12 @@ export function TikTokAccountSelect({
     <Card className="border-primary/20 bg-primary/[0.03] p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium">Assign to account</p>
+          <p className="text-sm font-medium">{title}</p>
           <p className="text-[11px] text-subtle">
-            {selected
-              ? `${selected.handle} · ${selected.niche}`
-              : "Select which creator account this report belongs to"}
+            {description ??
+              (selected
+                ? `${selected.handle} · ${selected.niche}`
+                : "Select which creator account this report belongs to")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

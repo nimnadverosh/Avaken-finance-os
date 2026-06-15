@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, RotateCcw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ImportStatusAlert } from "@/components/import/import-status-alert";
 import { useToast } from "@/components/ui/toast";
+import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { TikTokUploadZone } from "./tiktok-upload-zone";
 import { TikTokLoadingState } from "./tiktok-loading-state";
 import { TikTokSummaryPreview } from "./tiktok-summary-preview";
@@ -15,7 +16,11 @@ import { TikTokAccountManager, TikTokAccountSelect } from "./tiktok-account-mana
 import { parseTikTokFile } from "@/lib/tiktok/parse";
 import { attributionLabel, buildMonthlySummary } from "@/lib/tiktok/model";
 import { saveTikTokUpload } from "@/lib/tiktok/store";
-import { findAccountByCreatorName, getAffiliateAccounts } from "@/lib/tiktok/accounts";
+import {
+  findAccountByCreatorName,
+  getAffiliateAccounts,
+  normalizeHandle,
+} from "@/lib/tiktok/accounts";
 import { formatCurrency } from "@/lib/format";
 import type { ParsedTikTokReport } from "@/lib/tiktok/types";
 
@@ -24,6 +29,8 @@ type Step = "upload" | "parsing" | "preview" | "done";
 export function TikTokImportFlow() {
   const router = useRouter();
   const { toast, node: toastNode } = useToast();
+  const version = useMockDataVersion();
+  const accounts = useMemo(() => getAffiliateAccounts(), [version]);
 
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
@@ -41,35 +48,55 @@ export function TikTokImportFlow() {
   const suggestedPayTo: "personal" | "company" =
     summary && summary.split.company >= 1 ? "company" : "personal";
 
+  const selectedAccount = accountId ? accounts.find((a) => a.id === accountId) : null;
+
+  useEffect(() => {
+    if (accounts.length === 1) {
+      setAccountId(accounts[0]!.id);
+      return;
+    }
+    if (accountId && !accounts.some((a) => a.id === accountId)) {
+      setAccountId(null);
+    }
+  }, [accounts, accountId]);
+
   const reset = useCallback(() => {
     setStep("upload");
     setReport(null);
     setFileName("");
-    setAccountId(null);
     setError(null);
     setSavedLabel("");
   }, []);
 
-  const handleFile = useCallback(async (file: File) => {
-    setError(null);
-    setFileName(file.name);
-    setStep("parsing");
-    try {
-      const parsed = await parseTikTokFile(file);
-      setReport(parsed);
-      const matched = findAccountByCreatorName(parsed.creatorName);
-      if (matched) setAccountId(matched.id);
-      else if (getAffiliateAccounts().length === 1) {
-        setAccountId(getAffiliateAccounts()[0]!.id);
-      } else {
-        setAccountId(null);
+  const handleFile = useCallback(
+    async (file: File) => {
+      if (!accountId) {
+        setError("Select an affiliate account before uploading.");
+        return;
       }
-      setStep("preview");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read that file. Please try again.");
-      setStep("upload");
-    }
-  }, []);
+
+      setError(null);
+      setFileName(file.name);
+      setStep("parsing");
+      try {
+        const parsed = await parseTikTokFile(file);
+        setReport(parsed);
+
+        const matched = findAccountByCreatorName(parsed.creatorName);
+        if (matched && matched.id !== accountId) {
+          setError(
+            `File shows creator ${normalizeHandle(parsed.creatorName)} but you selected ${selectedAccount?.handle ?? "another account"}. Confirm the account below before importing.`,
+          );
+        }
+
+        setStep("preview");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not read that file. Please try again.");
+        setStep("upload");
+      }
+    },
+    [accountId, selectedAccount?.handle],
+  );
 
   const handleConfirm = useCallback(() => {
     if (!report || !accountId) return;
@@ -93,6 +120,14 @@ export function TikTokImportFlow() {
     }
   }, [report, fileName, accountId, toast, router]);
 
+  const uploadDisabled = accounts.length === 0 || !accountId;
+  const uploadDisabledReason =
+    accounts.length === 0
+      ? "Add an affiliate account above before uploading"
+      : !accountId
+        ? "Select which account this report is for, then drop your file"
+        : undefined;
+
   return (
     <div className="space-y-6">
       {toastNode}
@@ -102,7 +137,25 @@ export function TikTokImportFlow() {
       {step === "upload" && (
         <>
           <TikTokAccountManager compact />
-          <TikTokUploadZone onFile={handleFile} />
+
+          {accounts.length > 0 && (
+            <TikTokAccountSelect
+              value={accountId}
+              onChange={setAccountId}
+              title="Upload for account"
+              description={
+                selectedAccount
+                  ? `${selectedAccount.handle} · ${selectedAccount.niche} · this report will be linked here`
+                  : "Choose the creator account before you upload the Excel file"
+              }
+            />
+          )}
+
+          <TikTokUploadZone
+            onFile={handleFile}
+            disabled={uploadDisabled}
+            disabledReason={uploadDisabledReason}
+          />
           <TikTokUploadHistory />
         </>
       )}
@@ -137,6 +190,8 @@ export function TikTokImportFlow() {
             onChange={setAccountId}
             suggestedHandle={report.creatorName}
             suggestedPayTo={suggestedPayTo}
+            title="Confirm account"
+            description="You can change the account here if the file was assigned to the wrong creator"
           />
 
           <TikTokSummaryPreview summary={summary} report={report} />

@@ -18,9 +18,11 @@ function isExcel(file: File): boolean {
 export function TikTokUploadZone({
   onFile,
   disabled,
+  disabledReason,
 }: {
   onFile: (file: File) => void;
   disabled?: boolean;
+  disabledReason?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -97,7 +99,9 @@ export function TikTokUploadZone({
             from TikTok Shop → Affiliate → Earnings — or click to browse
           </p>
           <p className="mt-4 text-xs text-subtle">
-            Excel .xlsx · parsed instantly in your browser · one month per file
+            {disabled && disabledReason
+              ? disabledReason
+              : "Excel .xlsx · parsed instantly in your browser · one month per file"}
           </p>
           <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Shield className="size-3.5 text-primary/80" />
