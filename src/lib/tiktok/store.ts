@@ -6,6 +6,7 @@
  * replaces the previous file.
  */
 
+import { isClientReady } from "@/lib/client-ready";
 import type { TikTokAccount } from "@/lib/data/types";
 import {
   ensureAccountFromCreator,
@@ -28,7 +29,7 @@ let hydrated = false;
 /* ------------------------------------------------------------------ */
 
 function hydrate(): void {
-  if (hydrated || typeof window === "undefined") return;
+  if (hydrated || !isClientReady()) return;
   hydrated = true;
   try {
     const rawUploads = localStorage.getItem(UPLOADS_KEY);

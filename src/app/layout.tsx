@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ClientReady } from "@/components/client-ready";
 import { EntityProvider } from "@/lib/entity-context";
 
 const geistSans = Geist({
@@ -25,6 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en-GB" className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
       <body>
+        <ClientReady />
         <EntityProvider>{children}</EntityProvider>
       </body>
     </html>

@@ -1,3 +1,4 @@
+import { isClientReady } from "@/lib/client-ready";
 import {
   PERSONAL_BANK_ACCOUNT_IDS,
   PERSONAL_CREDIT_ACCOUNT_IDS,
@@ -44,7 +45,7 @@ let history: DailyBalanceUpdate[] = [];
 let hydrated = false;
 
 function hydrateFromStorage(): void {
-  if (hydrated || typeof window === "undefined") return;
+  if (hydrated || !isClientReady()) return;
   hydrated = true;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

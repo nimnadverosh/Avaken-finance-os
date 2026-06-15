@@ -5,6 +5,7 @@
  * across all registered accounts; the affiliates page shows per-account KPIs.
  */
 
+import { isClientReady } from "@/lib/client-ready";
 import type { TikTokAccount } from "@/lib/data/types";
 
 export interface TikTokAffiliateProfile {
@@ -37,7 +38,7 @@ let accounts: TikTokAffiliateProfile[] = [];
 let hydrated = false;
 
 function hydrate(): void {
-  if (hydrated || typeof window === "undefined") return;
+  if (hydrated || !isClientReady()) return;
   hydrated = true;
   try {
     const raw = localStorage.getItem(ACCOUNTS_KEY);

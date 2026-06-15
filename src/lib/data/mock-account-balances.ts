@@ -1,3 +1,4 @@
+import { isClientReady } from "@/lib/client-ready";
 import { accounts as seedAccounts } from "./mock";
 import { PERSONAL_CREDIT_ACCOUNT_IDS } from "@/lib/import/account-resolution";
 import type { Account } from "./types";
@@ -11,7 +12,7 @@ let balanceOverlay: Record<string, number> = {};
 let hydrated = false;
 
 function hydrateFromStorage(): void {
-  if (hydrated || typeof window === "undefined") return;
+  if (hydrated || !isClientReady()) return;
   hydrated = true;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

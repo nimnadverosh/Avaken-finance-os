@@ -1,3 +1,4 @@
+import { isClientReady } from "@/lib/client-ready";
 import { transactions as seedTransactions } from "./mock";
 import { isRealDataMode } from "./real-data-mode";
 import type { Transaction } from "./types";
@@ -10,7 +11,7 @@ let importOverlay: Transaction[] = [];
 let hydrated = false;
 
 function hydrateFromStorage(): void {
-  if (hydrated || typeof window === "undefined") return;
+  if (hydrated || !isClientReady()) return;
   hydrated = true;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
