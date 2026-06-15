@@ -29,7 +29,7 @@ import {
 import { getLedgerAccounts } from "./mock-account-balances";
 import { getLedgerTransactions } from "./mock-ledger";
 import { getDailyFinancialSnapshot } from "./daily-updates";
-import { getConsolidatedFinancialSummary } from "./personal-summary";
+import { getConsolidatedFinancialSummary, getPersonalFinancialSummary } from "./personal-summary";
 import { corpTax, type CorpTaxBreakdown } from "@/lib/tax/uk-corp-tax";
 import { ukPersonalTax, type TaxBreakdown } from "@/lib/tax/uk-income-tax";
 import { isRealDataMode } from "./real-data-mode";
@@ -85,54 +85,43 @@ function inEntity<T extends { entity: "personal" | "avaken" }>(items: T[], entit
 
 /* ---- Balances ---- */
 export function cashBalance(entity: Entity): number {
-  const snapshot = getDailyFinancialSnapshot();
-  if (snapshot) {
-    if (entity === "personal") return snapshot.personalBankTotal;
-    if (entity === "avaken") {
-      const reserves = getLedgerAccounts()
-        .filter((a) => a.entity === "avaken" && a.id !== "tide")
-        .reduce((sum, a) => sum + a.balance, 0);
-      return snapshot.avakenTideBalance + reserves;
-    }
-    const reserves = getLedgerAccounts()
-      .filter((a) => a.entity === "avaken" && a.id !== "tide")
-      .reduce((sum, a) => sum + a.balance, 0);
-    return snapshot.personalBankTotal + snapshot.avakenTideBalance + reserves;
+  const ledger = getLedgerAccounts();
+  if (entity === "personal") {
+    return sum(
+      inEntity(ledger, entity)
+        .filter((a) => a.type !== "investment" && a.type !== "credit")
+        .map((a) => a.balance),
+    );
   }
-
+  if (entity === "avaken") {
+    return sum(
+      inEntity(ledger, entity)
+        .filter((a) => a.type !== "credit")
+        .map((a) => a.balance),
+    );
+  }
   return sum(
-    inEntity(getLedgerAccounts(), entity)
+    ledger
       .filter((a) => a.type !== "investment" && a.type !== "credit")
       .map((a) => a.balance),
   );
 }
 
 export function netWorth(entity: Entity): number {
-  const snapshot = getDailyFinancialSnapshot();
-  if (snapshot) {
-    const etoro = getLedgerAccounts().find((a) => a.id === "etoro")?.balance ?? 0;
-    if (entity === "personal") return snapshot.netPosition + etoro;
-    if (entity === "avaken") {
-      const reserves = getLedgerAccounts()
-        .filter((a) => a.entity === "avaken" && a.id !== "tide")
-        .reduce((sum, a) => sum + a.balance, 0);
-      return snapshot.avakenTideBalance + reserves;
-    }
-    return getConsolidatedFinancialSummary().totalNetPosition + etoro;
-  }
+  const ledger = getLedgerAccounts();
+  const etoro = ledger.find((a) => a.id === "etoro")?.balance ?? 0;
 
-  if (isRealDataMode()) {
+  if (entity === "personal") {
+    return getPersonalFinancialSummary().netPosition + etoro;
+  }
+  if (entity === "avaken") {
     return sum(
-      inEntity(getLedgerAccounts(), entity)
+      inEntity(ledger, entity)
         .filter((a) => a.type !== "credit")
         .map((a) => a.balance),
     );
   }
-
-  const latest = netWorthSeries[netWorthSeries.length - 1];
-  if (entity === "personal") return latest.personal!;
-  if (entity === "avaken") return latest.avaken!;
-  return latest.personal! + latest.avaken!;
+  return getConsolidatedFinancialSummary().totalNetPosition + etoro;
 }
 
 /* ---- Revenue / expense series, entity aware ---- */

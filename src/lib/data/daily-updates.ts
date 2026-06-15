@@ -2,6 +2,7 @@ import {
   PERSONAL_BANK_ACCOUNT_IDS,
   PERSONAL_CREDIT_ACCOUNT_IDS,
 } from "@/lib/import/account-resolution";
+import { aggregatesFromLedger } from "./ledger-aggregates";
 import { accounts as seedAccounts } from "./mock";
 import { applyMockAccountBalances, getLedgerAccounts } from "./mock-account-balances";
 import type { HermesAccountBalance } from "@/lib/hermes/types";
@@ -190,34 +191,16 @@ export function getDailyFinancialSnapshot(): DailyFinancialSnapshot | null {
   };
 }
 
-/** Prefill the form from the latest update or current ledger totals. */
+/** Prefill the form from current ledger totals (keeps notes from last entry). */
 export function getDefaultDailyFormValues(): DailyBalanceFormValues {
   const latest = getLatestDailyUpdate();
-  if (latest) {
-    return {
-      personalBankTotal: formatCurrencyInput(latest.personalBankTotal),
-      avakenTideBalance: formatCurrencyInput(latest.avakenTideBalance),
-      creditCardDebt: formatCurrencyInput(latest.creditCardDebt),
-      notes: latest.notes,
-    };
-  }
-
-  const ledger = getLedgerAccounts().filter((a) => a.entity === "personal");
-  const bankBalances = PERSONAL_BANK_ACCOUNT_IDS.reduce((sum, id) => {
-    const acct = ledger.find((a) => a.id === id);
-    return sum + (acct?.balance ?? 0);
-  }, 0);
-  const creditCardDebt = PERSONAL_CREDIT_ACCOUNT_IDS.reduce((sum, id) => {
-    const acct = ledger.find((a) => a.id === id);
-    return sum + Math.abs(acct?.balance ?? 0);
-  }, 0);
-  const tide = getLedgerAccounts().find((a) => a.id === "tide")?.balance ?? 0;
+  const { personalBankTotal, avakenTideBalance, creditCardDebt } = aggregatesFromLedger();
 
   return {
-    personalBankTotal: formatCurrencyInput(bankBalances),
-    avakenTideBalance: formatCurrencyInput(tide),
+    personalBankTotal: formatCurrencyInput(personalBankTotal),
+    avakenTideBalance: formatCurrencyInput(avakenTideBalance),
     creditCardDebt: formatCurrencyInput(creditCardDebt),
-    notes: "",
+    notes: latest?.notes ?? "",
   };
 }
 
@@ -265,4 +248,32 @@ export function clearDailyUpdateHistory(): number {
   persistHistory();
   notifyDailyUpdatesChanged();
   return removed;
+}
+
+/**
+ * Sync today's daily snapshot aggregates from per-account ledger balances.
+ * Does not redistribute totals back to accounts (safe after manual corrections).
+ */
+export function reconcileDailySnapshotFromLedger(notes?: string): DailyBalanceUpdate {
+  hydrateFromStorage();
+
+  const { personalBankTotal, avakenTideBalance, creditCardDebt } = aggregatesFromLedger();
+  const now = new Date();
+  const date = localDateKey(now);
+  const existingToday = history.find((h) => h.date === date);
+
+  const entry: DailyBalanceUpdate = {
+    id: existingToday?.id ?? `daily-${now.getTime()}`,
+    date,
+    personalBankTotal,
+    avakenTideBalance,
+    creditCardDebt,
+    notes: notes ?? existingToday?.notes ?? "",
+    updatedAt: now.toISOString(),
+  };
+
+  history = [entry, ...history.filter((h) => h.date !== date)].slice(0, MAX_HISTORY);
+  persistHistory();
+  notifyDailyUpdatesChanged();
+  return entry;
 }

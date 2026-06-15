@@ -75,3 +75,21 @@ export function clearMockAccountBalances(): number {
   notifyAccountsChanged();
   return removed;
 }
+
+/** Set one or more account balances without redistributing totals. */
+export function setAccountBalances(updates: Record<string, number>): void {
+  if (Object.keys(updates).length === 0) return;
+  hydrateFromStorage();
+
+  for (const [accountId, balance] of Object.entries(updates)) {
+    const seed = seedAccounts.find((a) => a.id === accountId);
+    if (!seed) continue;
+    const isCredit =
+      seed.type === "credit" ||
+      (PERSONAL_CREDIT_ACCOUNT_IDS as readonly string[]).includes(accountId);
+    balanceOverlay[accountId] = isCredit ? Math.abs(balance) : balance;
+  }
+
+  persistOverlay();
+  notifyAccountsChanged();
+}

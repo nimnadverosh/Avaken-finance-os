@@ -1,9 +1,5 @@
-import {
-  PERSONAL_BANK_ACCOUNT_IDS,
-  PERSONAL_CREDIT_ACCOUNT_IDS,
-} from "@/lib/import/account-resolution";
 import type { Entity } from "./types";
-import { getDailyFinancialSnapshot } from "./daily-updates";
+import { aggregatesFromLedger } from "./ledger-aggregates";
 import { getLedgerAccounts } from "./mock-account-balances";
 
 export interface PersonalFinancialSummary {
@@ -17,43 +13,20 @@ export interface ConsolidatedFinancialSummary extends PersonalFinancialSummary {
   totalNetPosition: number;
 }
 
-/** Aggregates personal bank cash vs credit card debt from synced account balances. */
+/** Aggregates personal bank cash vs credit card debt from ledger balances. */
 export function getPersonalFinancialSummary(): PersonalFinancialSummary {
-  const snapshot = getDailyFinancialSnapshot();
-  if (snapshot) {
-    return {
-      bankBalances: snapshot.personalBankTotal,
-      creditCardDebt: snapshot.creditCardDebt,
-      netPosition: snapshot.netPosition,
-    };
-  }
-
-  const ledger = getLedgerAccounts().filter((a) => a.entity === "personal");
-
-  const bankBalances = PERSONAL_BANK_ACCOUNT_IDS.reduce((sum, id) => {
-    const acct = ledger.find((a) => a.id === id);
-    return sum + (acct?.balance ?? 0);
-  }, 0);
-
-  const creditCardDebt = PERSONAL_CREDIT_ACCOUNT_IDS.reduce((sum, id) => {
-    const acct = ledger.find((a) => a.id === id);
-    return sum + Math.abs(acct?.balance ?? 0);
-  }, 0);
-
+  const { personalBankTotal, creditCardDebt, netPosition } = aggregatesFromLedger();
   return {
-    bankBalances,
+    bankBalances: personalBankTotal,
     creditCardDebt,
-    netPosition: bankBalances - creditCardDebt,
+    netPosition,
   };
 }
 
 export function getConsolidatedFinancialSummary(): ConsolidatedFinancialSummary {
   const personal = getPersonalFinancialSummary();
-  const snapshot = getDailyFinancialSnapshot();
   const avakenTideBalance =
-    snapshot?.avakenTideBalance ??
-    getLedgerAccounts().find((a) => a.id === "tide")?.balance ??
-    0;
+    getLedgerAccounts().find((a) => a.id === "tide")?.balance ?? 0;
 
   return {
     ...personal,
