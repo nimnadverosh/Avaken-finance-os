@@ -35,7 +35,6 @@ export const navItems: NavItem[] = [
   { label: "Reserves", href: "/tax-clarity", icon: ShieldCheck, group: "Avaken" },
   { label: "VAT Return", href: "/vat", icon: Percent, badge: "Q4", group: "Avaken" },
   { label: "Year Plan", href: "/tax", icon: Landmark, group: "Avaken" },
-  { label: "Home Preview", href: "/tax-home-preview", icon: LayoutDashboard, badge: "new", group: "Avaken" },
 
   { label: "Portfolio", href: "/portfolio", icon: LineChart, group: "Wealth" },
 
