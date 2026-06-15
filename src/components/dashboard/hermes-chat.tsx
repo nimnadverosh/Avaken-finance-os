@@ -12,6 +12,7 @@ import {
   Info,
   Loader2,
   Radio,
+  RefreshCw,
   SendHorizontal,
   Sparkles,
   Zap,
@@ -46,6 +47,7 @@ export function HermesChat() {
     sendMessage,
     markAllRead,
     clearError,
+    refresh,
   } = useHermesChat();
 
   const [draft, setDraft] = useState("");
@@ -157,6 +159,17 @@ export function HermesChat() {
                 </span>
               </div>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void refresh({ full: true })}
+              className="h-9"
+              title="Refresh Hermes feed"
+            >
+              <RefreshCw className="size-3.5" />
+              Refresh
+            </Button>
             <Button
               type="button"
               variant="outline"

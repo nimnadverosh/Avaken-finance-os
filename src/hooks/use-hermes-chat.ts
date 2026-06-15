@@ -11,6 +11,7 @@ import type {
 const STORAGE_KEY = "avaken-hermes-chat";
 const POLL_MS = 12_000;
 const HERMES_CHAT_CHANGED = "avaken-hermes-chat-changed";
+const FETCH_OPTIONS: RequestInit = { cache: "no-store" };
 
 function loadCachedMessages(): HermesChatMessage[] {
   if (typeof window === "undefined") return [];
@@ -71,18 +72,28 @@ export function useHermesChat() {
     });
   }, []);
 
-  const refresh = useCallback(async (opts?: { markRead?: boolean }) => {
+  const refresh = useCallback(async (opts?: { markRead?: boolean; full?: boolean }) => {
     try {
       const params = new URLSearchParams();
-      if (lastPollRef.current) params.set("since", lastPollRef.current);
+      if (!opts?.full && lastPollRef.current) params.set("since", lastPollRef.current);
       if (opts?.markRead) params.set("markRead", "1");
 
-      const res = await fetch(`/api/hermes/messages?${params.toString()}`);
+      const query = params.toString();
+      const url = query ? `/api/hermes/messages?${query}` : "/api/hermes/messages";
+      let res = await fetch(url, FETCH_OPTIONS);
+
+      // Stale CDN edge after deploy — retry once with a full fetch.
+      if (res.status === 404) {
+        lastPollRef.current = null;
+        res = await fetch("/api/hermes/messages", FETCH_OPTIONS);
+      }
+
       if (!res.ok) return;
 
       const data = (await res.json()) as HermesMessagesResponse;
       if (!data.success) return;
 
+      setError(null);
       setStatus(data.status);
       setUnreadCount(data.unreadCount);
 
@@ -130,6 +141,7 @@ export function useHermesChat() {
 
       try {
         const res = await fetch("/api/hermes/chat", {
+          ...FETCH_OPTIONS,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: trimmed }),
@@ -176,7 +188,7 @@ export function useHermesChat() {
   );
 
   const markAllRead = useCallback(async () => {
-    await fetch("/api/hermes/messages?markRead=1");
+    await fetch("/api/hermes/messages?markRead=1", FETCH_OPTIONS);
     syncMessages((prev) =>
       prev.map((m) => (m.kind === "notification" ? { ...m, read: true } : m)),
     );
