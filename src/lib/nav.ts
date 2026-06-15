@@ -31,6 +31,7 @@ export const navItems: NavItem[] = [
 
   { label: "Affiliates", href: "/affiliates", icon: Music2, group: "Avaken" },
   { label: "TikTok Upload", href: "/import/tiktok", icon: Upload, badge: "new", group: "Avaken" },
+  { label: "MRDP Import", href: "/import/tiktok/mrdp", icon: FileBarChart2, badge: "new", group: "Avaken" },
   { label: "Reserves", href: "/tax-clarity", icon: ShieldCheck, group: "Avaken" },
   { label: "VAT Return", href: "/vat", icon: Percent, badge: "Q4", group: "Avaken" },
   { label: "Year Plan", href: "/tax", icon: Landmark, group: "Avaken" },
@@ -46,6 +47,11 @@ export const navGroups = ["Overview", "Plan", "Avaken", "Wealth", "Reporting"] a
 
 /** Advanced import tools — linked from Settings, not the main sidebar. */
 export const advancedImportLinks = [
+  {
+    label: "TikTok MRDP import",
+    href: "/import/tiktok/mrdp",
+    description: "Upload the official TikTok Shop MRDP annual tax report (Excel)",
+  },
   {
     label: "TikTok monthly upload",
     href: "/import/tiktok",

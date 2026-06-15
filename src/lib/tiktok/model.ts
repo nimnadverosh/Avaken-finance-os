@@ -82,22 +82,21 @@ function sideFigures(
 }
 
 /**
- * Apply automatic attribution + smart-adjustment rules to a parsed report.
- * Returns a `TikTokMonthlySummary` ready for the store and dashboard.
+ * Apply smart-adjustment rules with an explicit company/personal split.
+ * Used by MRDP imports where the user assigns entity per quarter.
  */
-export function buildMonthlySummary(report: ParsedTikTokReport): TikTokMonthlySummary {
-  const split = splitForMonth(report.year, report.month);
+export function buildMonthlySummaryWithSplit(
+  report: ParsedTikTokReport,
+  split: SplitConfig,
+): TikTokMonthlySummary {
   const grossRevenue = Math.max(0, report.grossRevenue);
 
-  // Smart-adjusted operating expenses: a realistic share of revenue, floored so
-  // a quiet month still shows the fixed tooling/subscription cost base.
   const estimatedExpenses = round2(
     Math.max(SMART_ADJUSTMENT.minMonthlyExpense, grossRevenue * SMART_ADJUSTMENT.expenseRatio),
   );
   const netProfit = round2(grossRevenue - estimatedExpenses);
   const marginPct = grossRevenue > 0 ? round2((netProfit / grossRevenue) * 100) : 0;
 
-  // Output VAT on the VAT-able, VAT-inclusive UK revenue: gross − gross/1.2.
   const vatableRevenue = grossRevenue * SMART_ADJUSTMENT.vatableShare;
   const outputVat = round2(vatableRevenue - vatableRevenue / (1 + SMART_ADJUSTMENT.vatRate));
 
@@ -127,6 +126,14 @@ export function buildMonthlySummary(report: ParsedTikTokReport): TikTokMonthlySu
     topBrands: report.topBrands,
     daily: report.daily,
   };
+}
+
+/**
+ * Apply automatic attribution + smart-adjustment rules to a parsed report.
+ * Returns a `TikTokMonthlySummary` ready for the store and dashboard.
+ */
+export function buildMonthlySummary(report: ParsedTikTokReport): TikTokMonthlySummary {
+  return buildMonthlySummaryWithSplit(report, splitForMonth(report.year, report.month));
 }
 
 /** Clamp a percentage delta into the sane display band (avoids absurd values). */

@@ -11,8 +11,8 @@ import {
   ensureAccountFromCreator,
   getAffiliateAccountById,
 } from "./accounts";
-import type { ParsedTikTokReport, TikTokUploadRecord } from "./types";
-import { buildMonthlySummary } from "./model";
+import type { ParsedTikTokReport, SplitConfig, TikTokUploadRecord } from "./types";
+import { buildMonthlySummaryWithSplit, splitForMonth } from "./model";
 
 const UPLOADS_KEY = "avaken-tiktok-uploads";
 const MAX_UPLOADS = 36 * 8; // up to 8 accounts × 3 years
@@ -68,10 +68,10 @@ function isUploadRecord(value: unknown): value is TikTokUploadRecord {
   );
 }
 
-/** Re-apply automatic attribution + smart-adjustment to a stored upload. */
+/** Re-apply smart-adjustment using the stored split configuration. */
 function remodelUpload(record: TikTokUploadRecord): TikTokUploadRecord {
-  const summary = buildMonthlySummary(record.report);
-  return { ...record, split: summary.split, summary };
+  const summary = buildMonthlySummaryWithSplit(record.report, record.split);
+  return { ...record, summary };
 }
 
 /** Assign legacy uploads (no accountId) to an account derived from creator name. */
@@ -119,6 +119,10 @@ export function hasTikTokUploads(): boolean {
   return uploads.length > 0;
 }
 
+function summarySplitFromReport(report: ParsedTikTokReport): SplitConfig {
+  return splitForMonth(report.year, report.month);
+}
+
 /**
  * Persist a freshly-parsed report for a specific affiliate account.
  * Replaces any existing upload for the same account + month.
@@ -127,13 +131,17 @@ export function saveTikTokUpload(
   report: ParsedTikTokReport,
   fileName: string,
   accountId: string,
+  splitOverride?: SplitConfig,
 ): TikTokUploadRecord {
   hydrate();
   if (!getAffiliateAccountById(accountId)) {
     throw new Error("Select a valid affiliate account before importing.");
   }
 
-  const summary = buildMonthlySummary(report);
+  const summary = buildMonthlySummaryWithSplit(
+    report,
+    splitOverride ?? summarySplitFromReport(report),
+  );
   const key = uploadKey(accountId, summary.monthKey);
   const record: TikTokUploadRecord = {
     id: `tiktok-${key}-${Date.now()}`,
