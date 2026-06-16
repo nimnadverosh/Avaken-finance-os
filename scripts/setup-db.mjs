@@ -102,6 +102,41 @@ CREATE TABLE IF NOT EXISTS portfolio_positions (
   pnl_pct numeric(6,2),
   kind text NOT NULL DEFAULT 'stock'
 );
+
+CREATE TABLE IF NOT EXISTS affiliate_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug text NOT NULL UNIQUE,
+  handle text NOT NULL,
+  niche text NOT NULL DEFAULT 'TikTok Shop',
+  pay_to pay_to NOT NULL DEFAULT 'personal',
+  accent text NOT NULL DEFAULT '#10b981',
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tiktok_uploads (
+  id text PRIMARY KEY,
+  account_slug text NOT NULL,
+  month_key text NOT NULL,
+  file_name text NOT NULL,
+  uploaded_at timestamp NOT NULL,
+  split_json jsonb NOT NULL,
+  report_json jsonb NOT NULL,
+  summary_json jsonb NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tiktok_uploads_account_month_idx
+  ON tiktok_uploads (account_slug, month_key);
+
+CREATE TABLE IF NOT EXISTS planner_tasks (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  done boolean NOT NULL DEFAULT false,
+  duration integer,
+  day text,
+  "order" integer NOT NULL DEFAULT 0,
+  created_at bigint NOT NULL,
+  completed_at bigint
+);
 `;
 
 async function safe(stmt) {

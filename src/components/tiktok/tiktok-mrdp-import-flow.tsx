@@ -97,12 +97,12 @@ export function TikTokMrdpImportFlow() {
     [accountId, selectedAccount?.handle],
   );
 
-  const handleImport = useCallback(() => {
+  const handleImport = useCallback(async () => {
     if (!report || !accountId) return;
     setImporting(true);
     setError(null);
     try {
-      const result = importMrdpReport(report, assignment, accountId);
+      const result = await importMrdpReport(report, assignment, accountId);
       setImportResult(result);
       setStep("done");
       toast({

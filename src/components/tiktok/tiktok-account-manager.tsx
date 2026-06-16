@@ -43,10 +43,10 @@ export function TikTokAccountManager({ compact = false }: TikTokAccountManagerPr
     return map;
   }, [version]);
 
-  function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!handle.trim()) return;
-    const created = addAffiliateAccount({ handle, niche: niche || "TikTok Shop", payTo });
+    const created = await addAffiliateAccount({ handle, niche: niche || "TikTok Shop", payTo });
     setHandle("");
     setNiche("");
     toast({
@@ -56,9 +56,9 @@ export function TikTokAccountManager({ compact = false }: TikTokAccountManagerPr
     });
   }
 
-  function handleRemove(account: TikTokAffiliateProfile) {
-    const uploadsRemoved = deleteTikTokUploadsForAccount(account.id);
-    removeAffiliateAccount(account.id);
+  async function handleRemove(account: TikTokAffiliateProfile) {
+    const uploadsRemoved = await deleteTikTokUploadsForAccount(account.id);
+    await removeAffiliateAccount(account.id);
     setConfirmDeleteId(null);
     toast({
       title: `${account.handle} removed`,
@@ -214,9 +214,9 @@ export function TikTokAccountSelect({
 
   const selected = value ? accounts.find((a) => a.id === value) : null;
 
-  function createFromSuggestion() {
+  async function createFromSuggestion() {
     const h = newHandle.trim() || suggestedHandle || "@account";
-    const created = addAffiliateAccount({
+    const created = await addAffiliateAccount({
       handle: normalizeHandle(h),
       niche: "TikTok Shop",
       payTo: suggestedPayTo,

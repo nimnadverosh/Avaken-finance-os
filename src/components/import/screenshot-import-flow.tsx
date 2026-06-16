@@ -129,7 +129,7 @@ export function ScreenshotImportFlow() {
       setSources(builtSources);
       setBatchId(result.batchId);
       setAccountBalances(result.accountBalances ?? []);
-      applyHermesAccountBalances(result.accountBalances);
+      void applyHermesAccountBalances(result.accountBalances);
       setWarnings(result.warnings ?? []);
       setDemo(Boolean(result.demo));
       setStep("preview");
@@ -172,7 +172,7 @@ export function ScreenshotImportFlow() {
       } else {
         prependTransactionsToMock(result.transactions, batchId);
       }
-      applyHermesAccountBalances(result.accountBalances ?? accountBalances);
+      void applyHermesAccountBalances(result.accountBalances ?? accountBalances);
       setImportedCount(result.imported);
       setImportStorage(result.storage);
       setSuccessMsg(

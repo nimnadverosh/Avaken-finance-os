@@ -1,12 +1,15 @@
 import {
+  bigint,
   boolean,
   date,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -121,4 +124,46 @@ export const portfolioPositions = pgTable("portfolio_positions", {
   pnl: money("pnl").notNull().default("0"),
   pnlPct: numeric("pnl_pct", { precision: 6, scale: 2 }),
   kind: text("kind").notNull().default("stock"),
+});
+
+/** User-managed TikTok Shop affiliate creator profiles (distinct from seed KPI rows). */
+export const affiliateProfiles = pgTable("affiliate_profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  /** Client-stable id, e.g. tt-1234567890-abc12 */
+  slug: text("slug").notNull().unique(),
+  handle: text("handle").notNull(),
+  niche: text("niche").notNull().default("TikTok Shop"),
+  payTo: payToEnum("pay_to").notNull().default("personal"),
+  accent: text("accent").notNull().default("#10b981"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Monthly TikTok Shop earnings uploads (parsed report + modelled summary). */
+export const tiktokUploads = pgTable(
+  "tiktok_uploads",
+  {
+    id: text("id").primaryKey(),
+    accountSlug: text("account_slug").notNull(),
+    monthKey: text("month_key").notNull(),
+    fileName: text("file_name").notNull(),
+    uploadedAt: timestamp("uploaded_at").notNull(),
+    splitJson: jsonb("split_json").notNull(),
+    reportJson: jsonb("report_json").notNull(),
+    summaryJson: jsonb("summary_json").notNull(),
+  },
+  (table) => [
+    uniqueIndex("tiktok_uploads_account_month_idx").on(table.accountSlug, table.monthKey),
+  ],
+);
+
+/** Daily planner tasks (inbox + day columns). */
+export const plannerTasks = pgTable("planner_tasks", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  done: boolean("done").notNull().default(false),
+  duration: integer("duration"),
+  day: text("day"),
+  order: integer("order").notNull().default(0),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  completedAt: bigint("completed_at", { mode: "number" }),
 });

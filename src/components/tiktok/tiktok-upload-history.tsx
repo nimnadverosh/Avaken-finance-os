@@ -50,7 +50,7 @@ export function TikTokUploadHistory() {
               </div>
               <button
                 type="button"
-                onClick={() => deleteTikTokUpload(u.id)}
+                onClick={() => void deleteTikTokUpload(u.id)}
                 aria-label={`Delete ${u.summary.periodLabel} upload`}
                 className="rounded-md p-1.5 text-subtle transition-colors hover:bg-negative/10 hover:text-negative"
               >

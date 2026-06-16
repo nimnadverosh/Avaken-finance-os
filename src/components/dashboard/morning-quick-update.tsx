@@ -55,7 +55,7 @@ export function MorningQuickUpdate() {
     [],
   );
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
 
@@ -74,7 +74,7 @@ export function MorningQuickUpdate() {
 
     setSubmitting(true);
     try {
-      saveDailyBalanceUpdate({
+      await saveDailyBalanceUpdate({
         personalBankTotal,
         avakenTideBalance,
         creditCardDebt,

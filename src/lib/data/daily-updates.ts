@@ -210,12 +210,12 @@ export function wasUpdatedToday(): boolean {
   return latest?.date === localDateKey();
 }
 
-export function saveDailyBalanceUpdate(input: {
+export async function saveDailyBalanceUpdate(input: {
   personalBankTotal: number;
   avakenTideBalance: number;
   creditCardDebt: number;
   notes?: string;
-}): DailyBalanceUpdate {
+}): Promise<DailyBalanceUpdate> {
   hydrateFromStorage();
 
   const now = new Date();
@@ -232,11 +232,13 @@ export function saveDailyBalanceUpdate(input: {
   history = [entry, ...history.filter((h) => h.id !== entry.id)].slice(0, MAX_HISTORY);
   persistHistory();
 
-  applyMockAccountBalances(buildBalanceUpdates(
-    input.personalBankTotal,
-    input.avakenTideBalance,
-    input.creditCardDebt,
-  ));
+  await applyMockAccountBalances(
+    buildBalanceUpdates(
+      input.personalBankTotal,
+      input.avakenTideBalance,
+      input.creditCardDebt,
+    ),
+  );
 
   notifyDailyUpdatesChanged();
   return entry;

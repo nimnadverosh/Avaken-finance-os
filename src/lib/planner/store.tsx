@@ -9,14 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { DB_LEDGER_CHANGED, getDbPlannerTasks, isDbLedgerEnabled, refreshDbLedger } from "@/lib/data/db-cache";
 import { addDayKey, todayKey } from "./dates";
 import type { NewTaskInput, PlannerState, PlannerTask } from "./types";
 
 const STORAGE_KEY = "avaken.planner.v2";
-
-/* ------------------------------------------------------------------ */
-/*  Seed — a calm starter so the planner never feels empty             */
-/* ------------------------------------------------------------------ */
 
 function buildSeed(): PlannerState {
   const today = todayKey();
@@ -44,17 +41,12 @@ function buildSeed(): PlannerState {
       t("Reply to TikTok Shop emails", today, { done: true }),
       t("Approve Q4 VAT figures", tomorrow, { duration: 45 }),
       t("Gym", tomorrow),
-      // Brain Dump
       t("Call accountant re: dividends", null),
       t("Book flights for March", null),
       t("Idea: automate monthly P&L export", null),
     ],
   };
 }
-
-/* ------------------------------------------------------------------ */
-/*  Context                                                            */
-/* ------------------------------------------------------------------ */
 
 interface PlannerContextValue extends PlannerState {
   hydrated: boolean;
@@ -70,33 +62,79 @@ interface PlannerContextValue extends PlannerState {
 
 const PlannerContext = createContext<PlannerContextValue | null>(null);
 
+async function persistToDb(tasks: PlannerTask[]): Promise<void> {
+  await fetch("/api/planner/tasks", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tasks }),
+  });
+}
+
 export function PlannerProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PlannerState>({ tasks: [] });
   const [hydrated, setHydrated] = useState(false);
   const orderCounter = useRef(0);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let loaded: PlannerState | null = null;
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) loaded = JSON.parse(raw) as PlannerState;
-    } catch {
-      loaded = null;
+    const loadInitial = () => {
+      let loaded: PlannerState | null = null;
+
+      if (isDbLedgerEnabled()) {
+        const dbTasks = getDbPlannerTasks();
+        if (dbTasks.length > 0) {
+          loaded = { tasks: dbTasks };
+        }
+      }
+
+      if (!loaded) {
+        try {
+          const raw = window.localStorage.getItem(STORAGE_KEY);
+          if (raw) loaded = JSON.parse(raw) as PlannerState;
+        } catch {
+          loaded = null;
+        }
+      }
+
+      const initial = loaded ?? buildSeed();
+      orderCounter.current = initial.tasks.reduce((m, t) => Math.max(m, t.order), 0) + 1;
+      setState(initial);
+      setHydrated(true);
+    };
+
+    loadInitial();
+
+    const onDbChange = () => {
+      if (!isDbLedgerEnabled()) return;
+      const dbTasks = getDbPlannerTasks();
+      if (dbTasks.length > 0) {
+        setState({ tasks: dbTasks });
+      }
+    };
+    window.addEventListener(DB_LEDGER_CHANGED, onDbChange);
+    return () => window.removeEventListener(DB_LEDGER_CHANGED, onDbChange);
+  }, []);
+
+  const schedulePersist = useCallback((tasks: PlannerTask[]) => {
+    if (isDbLedgerEnabled()) {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+      persistTimer.current = setTimeout(() => {
+        void persistToDb(tasks).then(() => refreshDbLedger());
+      }, 400);
+      return;
     }
-    const initial = loaded ?? buildSeed();
-    orderCounter.current = initial.tasks.reduce((m, t) => Math.max(m, t.order), 0) + 1;
-    setState(initial);
-    setHydrated(true);
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks }));
+    } catch {
+      /* non-fatal */
+    }
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      /* non-fatal */
-    }
-  }, [state, hydrated]);
+    schedulePersist(state.tasks);
+  }, [state, hydrated, schedulePersist]);
 
   const nextOrder = useCallback(() => orderCounter.current++, []);
 

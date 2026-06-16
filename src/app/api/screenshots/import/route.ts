@@ -54,11 +54,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { storage, transactions: created } = await persistImportedTransactions(rows);
-
     const accountBalances = Array.isArray(body.accountBalances)
       ? (body.accountBalances as HermesAccountBalance[])
       : undefined;
+
+    const { storage, transactions: created } = await persistImportedTransactions(
+      rows,
+      accountBalances,
+    );
 
     const response: ScreenshotImportResponse = {
       success: true,

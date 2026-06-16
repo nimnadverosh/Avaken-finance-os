@@ -4,7 +4,7 @@
  */
 
 import { isClientReady } from "@/lib/client-ready";
-import { isDbLedgerEnabled, getDbAccounts } from "./db-cache";
+import { isDbLedgerEnabled, getDbAccounts, refreshDbLedger } from "./db-cache";
 import { accounts as seedAccounts } from "./mock";
 import type { Account, AccountType } from "./types";
 
@@ -111,6 +111,22 @@ export function isSeedAccount(id: string): boolean {
 }
 
 export function getCustomAccounts(): CustomAccountRecord[] {
+  if (isDbLedgerEnabled()) {
+    return getDbAccounts()
+      .filter((a) => !SEED_IDS.has(a.id))
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        institution: a.institution,
+        type: a.type,
+        entity: a.entity,
+        balance: a.balance,
+        currency: a.currency,
+        last4: a.last4,
+        accent: a.accent,
+        createdAt: new Date().toISOString(),
+      }));
+  }
   hydrate();
   return [...customAccounts];
 }
@@ -120,9 +136,11 @@ export function getCustomAccountsForEntity(entity: StoredEntity): CustomAccountR
 }
 
 export function getAllAccountsBase(): Account[] {
+  if (isDbLedgerEnabled()) {
+    return getDbAccounts();
+  }
   hydrate();
-  const base = isDbLedgerEnabled() ? getDbAccounts() : seedAccounts;
-  return [...base, ...customAccounts.map(toAccount)];
+  return [...seedAccounts, ...customAccounts.map(toAccount)];
 }
 
 function toAccount(record: CustomAccountRecord): Account {
@@ -176,7 +194,7 @@ function defaultType(input: AddAccountInput): AccountType {
   return input.subtype === "savings" ? "savings" : "current";
 }
 
-export function addCustomAccount(input: AddAccountInput): CustomAccountRecord {
+export async function addCustomAccount(input: AddAccountInput): Promise<CustomAccountRecord> {
   hydrate();
   const institution = input.institution.trim() || "Other";
   const name = input.name.trim() || `${institution} ${input.kind === "credit" ? "Credit" : "Account"}`;
@@ -201,18 +219,51 @@ export function addCustomAccount(input: AddAccountInput): CustomAccountRecord {
     createdAt: new Date().toISOString(),
   };
 
+  if (isDbLedgerEnabled()) {
+    await fetch("/api/accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: record.id,
+        name: record.name,
+        institution: record.institution,
+        type: record.type,
+        entity: record.entity,
+        balance: record.balance,
+        currency: record.currency,
+        last4: record.last4,
+        accent: record.accent,
+      }),
+    });
+    await refreshDbLedger();
+    notifyChanged();
+    return record;
+  }
+
   customAccounts = [...customAccounts, record];
   persist();
   notifyChanged();
   return record;
 }
 
-export function updateCustomAccount(
+export async function updateCustomAccount(
   id: string,
   patch: Partial<Pick<CustomAccountRecord, "name" | "institution" | "last4" | "balance" | "currency">>,
-): CustomAccountRecord | null {
+): Promise<CustomAccountRecord | null> {
   hydrate();
   if (SEED_IDS.has(id)) return null;
+
+  if (isDbLedgerEnabled()) {
+    await fetch("/api/accounts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: id, ...patch }),
+    });
+    await refreshDbLedger();
+    notifyChanged();
+    return getCustomAccounts().find((a) => a.id === id) ?? null;
+  }
+
   const idx = customAccounts.findIndex((a) => a.id === id);
   if (idx === -1) return null;
 
@@ -241,9 +292,18 @@ export function updateCustomAccount(
   return updated;
 }
 
-export function removeCustomAccount(id: string): boolean {
+export async function removeCustomAccount(id: string): Promise<boolean> {
   hydrate();
   if (SEED_IDS.has(id)) return false;
+
+  if (isDbLedgerEnabled()) {
+    const res = await fetch(`/api/accounts?slug=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) return false;
+    await refreshDbLedger();
+    notifyChanged();
+    return true;
+  }
+
   const before = customAccounts.length;
   customAccounts = customAccounts.filter((a) => a.id !== id);
   if (customAccounts.length !== before) {

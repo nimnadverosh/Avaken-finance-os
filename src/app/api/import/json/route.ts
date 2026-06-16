@@ -55,7 +55,10 @@ export async function POST(request: Request) {
     }
 
     const { transactions, batchId, accountBalances } = validated;
-    const { storage, transactions: created } = await persistImportedTransactions(transactions);
+    const { storage, transactions: created } = await persistImportedTransactions(
+      transactions,
+      accountBalances,
+    );
 
     const response: JsonImportResponse = {
       success: true,

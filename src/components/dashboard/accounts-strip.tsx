@@ -114,7 +114,7 @@ export function AccountsStrip({ accounts }: { accounts: Account[] }) {
     }).length;
   }, [editing, accounts, draft]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setError(null);
     const updates: Record<string, number> = {};
 
@@ -132,7 +132,7 @@ export function AccountsStrip({ accounts }: { accounts: Account[] }) {
     setSaving(true);
     try {
       if (Object.keys(updates).length > 0) {
-        setAccountBalances(updates);
+        await setAccountBalances(updates);
         reconcileDailySnapshotFromLedger();
       }
       setEditing(false);

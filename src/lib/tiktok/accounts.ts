@@ -6,11 +6,16 @@
  */
 
 import { isClientReady } from "@/lib/client-ready";
+import {
+  DB_LEDGER_CHANGED,
+  getDbAffiliateProfiles,
+  isDbLedgerEnabled,
+  refreshDbLedger,
+} from "@/lib/data/db-cache";
 import type { TikTokAccount } from "@/lib/data/types";
 
 export interface TikTokAffiliateProfile {
   id: string;
-  /** Creator handle, e.g. "@avaken.tech" */
   handle: string;
   niche: string;
   payTo: TikTokAccount["payTo"];
@@ -20,7 +25,6 @@ export interface TikTokAffiliateProfile {
 
 const ACCOUNTS_KEY = "avaken-tiktok-accounts";
 
-/** Fired whenever the account registry changes. */
 export const TIKTOK_ACCOUNTS_CHANGED = "avaken-tiktok-accounts-changed";
 
 const ACCENT_PALETTE = [
@@ -37,9 +41,24 @@ const ACCENT_PALETTE = [
 let accounts: TikTokAffiliateProfile[] = [];
 let hydrated = false;
 
+if (typeof window !== "undefined") {
+  window.addEventListener(DB_LEDGER_CHANGED, () => {
+    if (isDbLedgerEnabled()) {
+      accounts = getDbAffiliateProfiles();
+      notifyChanged();
+    }
+  });
+}
+
 function hydrate(): void {
   if (hydrated || !isClientReady()) return;
   hydrated = true;
+
+  if (isDbLedgerEnabled()) {
+    accounts = getDbAffiliateProfiles();
+    return;
+  }
+
   try {
     const raw = localStorage.getItem(ACCOUNTS_KEY);
     if (raw) {
@@ -54,7 +73,7 @@ function hydrate(): void {
 }
 
 function persist(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || isDbLedgerEnabled()) return;
   if (accounts.length === 0) localStorage.removeItem(ACCOUNTS_KEY);
   else localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
 }
@@ -77,14 +96,12 @@ function isAffiliateProfile(value: unknown): value is TikTokAffiliateProfile {
   );
 }
 
-/** Normalise a handle to always start with "@". */
 export function normalizeHandle(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "@account";
   return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
 }
 
-/** Match a parsed creator name to an existing account handle. */
 export function findAccountByCreatorName(creatorName: string): TikTokAffiliateProfile | null {
   hydrate();
   if (!creatorName.trim()) return null;
@@ -113,7 +130,7 @@ export interface AddAffiliateInput {
   payTo?: TikTokAccount["payTo"];
 }
 
-export function addAffiliateAccount(input: AddAffiliateInput): TikTokAffiliateProfile {
+export async function addAffiliateAccount(input: AddAffiliateInput): Promise<TikTokAffiliateProfile> {
   hydrate();
   const handle = normalizeHandle(input.handle);
   const existing = accounts.find((a) => a.handle.toLowerCase() === handle.toLowerCase());
@@ -127,16 +144,29 @@ export function addAffiliateAccount(input: AddAffiliateInput): TikTokAffiliatePr
     accent: ACCENT_PALETTE[accounts.length % ACCENT_PALETTE.length]!,
     createdAt: new Date().toISOString(),
   };
+
+  if (isDbLedgerEnabled()) {
+    await fetch("/api/tiktok/affiliates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile }),
+    });
+    await refreshDbLedger();
+    accounts = getDbAffiliateProfiles();
+    notifyChanged();
+    return profile;
+  }
+
   accounts = [...accounts, profile];
   persist();
   notifyChanged();
   return profile;
 }
 
-export function updateAffiliateAccount(
+export async function updateAffiliateAccount(
   id: string,
   patch: Partial<Pick<TikTokAffiliateProfile, "handle" | "niche" | "payTo">>,
-): TikTokAffiliateProfile | null {
+): Promise<TikTokAffiliateProfile | null> {
   hydrate();
   const idx = accounts.findIndex((a) => a.id === id);
   if (idx === -1) return null;
@@ -147,30 +177,45 @@ export function updateAffiliateAccount(
     ...(patch.niche !== undefined ? { niche: patch.niche.trim() || current.niche } : {}),
     ...(patch.payTo !== undefined ? { payTo: patch.payTo } : {}),
   };
+
+  if (isDbLedgerEnabled()) {
+    await fetch("/api/tiktok/affiliates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: updated }),
+    });
+    await refreshDbLedger();
+    accounts = getDbAffiliateProfiles();
+    notifyChanged();
+    return updated;
+  }
+
   accounts = [...accounts.slice(0, idx), updated, ...accounts.slice(idx + 1)];
   persist();
   notifyChanged();
   return updated;
 }
 
-/** Removes an account from the registry. Caller should delete associated uploads. */
-export function removeAffiliateAccount(id: string): boolean {
+export async function removeAffiliateAccount(id: string): Promise<boolean> {
   hydrate();
   const before = accounts.length;
   accounts = accounts.filter((a) => a.id !== id);
-  if (accounts.length !== before) {
+  if (accounts.length === before) return false;
+
+  if (isDbLedgerEnabled()) {
+    await fetch(`/api/tiktok/affiliates?slug=${encodeURIComponent(id)}`, { method: "DELETE" });
+    await refreshDbLedger();
+  } else {
     persist();
-    notifyChanged();
-    return true;
   }
-  return false;
+  notifyChanged();
+  return true;
 }
 
-/** Create a default account from a parsed report's creator name (migration / first upload). */
-export function ensureAccountFromCreator(
+export async function ensureAccountFromCreator(
   creatorName: string,
   payTo: TikTokAccount["payTo"] = "personal",
-): TikTokAffiliateProfile {
+): Promise<TikTokAffiliateProfile> {
   const existing = findAccountByCreatorName(creatorName);
   if (existing) return existing;
   return addAffiliateAccount({
@@ -178,4 +223,27 @@ export function ensureAccountFromCreator(
     niche: "TikTok Shop",
     payTo,
   });
+}
+
+/** Sync variant for localStorage-only migration (not used when DB is enabled). */
+export function ensureAccountFromCreatorSync(
+  creatorName: string,
+  payTo: TikTokAccount["payTo"] = "personal",
+): TikTokAffiliateProfile {
+  const existing = findAccountByCreatorName(creatorName);
+  if (existing) return existing;
+
+  const handle = normalizeHandle(creatorName.trim() || "@primary");
+  const profile: TikTokAffiliateProfile = {
+    id: `tt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    handle,
+    niche: "TikTok Shop",
+    payTo,
+    accent: ACCENT_PALETTE[accounts.length % ACCENT_PALETTE.length]!,
+    createdAt: new Date().toISOString(),
+  };
+  accounts = [...accounts, profile];
+  persist();
+  notifyChanged();
+  return profile;
 }

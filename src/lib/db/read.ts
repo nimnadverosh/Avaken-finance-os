@@ -17,6 +17,9 @@ import type {
   Transaction,
   VatPeriod,
 } from "@/lib/data/types";
+import type { TikTokAffiliateProfile } from "@/lib/tiktok/accounts";
+import type { TikTokUploadRecord } from "@/lib/tiktok/types";
+import type { PlannerTask } from "@/lib/planner/types";
 import {
   mapAccount,
   mapPortfolioPosition,
@@ -25,6 +28,8 @@ import {
   mapTransaction,
   mapVatPeriod,
 } from "./mappers";
+import { readAffiliateProfiles, readTikTokUploads } from "./tiktok-persistence";
+import { readPlannerTasks } from "./planner-persistence";
 
 export interface LedgerSnapshot {
   accounts: Account[];
@@ -33,6 +38,9 @@ export interface LedgerSnapshot {
   tiktokAccounts: TikTokAccount[];
   vatPeriods: VatPeriod[];
   portfolio: PortfolioPosition[];
+  affiliateProfiles: TikTokAffiliateProfile[];
+  tiktokUploads: TikTokUploadRecord[];
+  plannerTasks: PlannerTask[];
 }
 
 async function accountSlugMap(): Promise<Map<string, string>> {
@@ -49,13 +57,17 @@ export async function readLedgerSnapshot(): Promise<LedgerSnapshot | null> {
 
   const slugById = await accountSlugMap();
 
-  const [accountRows, txnRows, subRows, ttRows, vatRows, portfolioRows] = await Promise.all([
+  const [accountRows, txnRows, subRows, ttRows, vatRows, portfolioRows, affiliateRows, uploadRows, plannerRows] =
+    await Promise.all([
     db.select().from(accounts).orderBy(accounts.entity, accounts.name),
     db.select().from(transactions).orderBy(desc(transactions.date), desc(transactions.createdAt)),
     db.select().from(subscriptions).orderBy(subscriptions.entity, subscriptions.name),
     db.select().from(tiktokAccounts).orderBy(tiktokAccounts.handle),
     db.select().from(vatPeriods).orderBy(desc(vatPeriods.periodStart)),
     db.select().from(portfolioPositions).orderBy(desc(portfolioPositions.value)),
+    readAffiliateProfiles(),
+    readTikTokUploads(),
+    readPlannerTasks(),
   ]);
 
   return {
@@ -65,6 +77,9 @@ export async function readLedgerSnapshot(): Promise<LedgerSnapshot | null> {
     tiktokAccounts: ttRows.map(mapTikTokAccount),
     vatPeriods: vatRows.map(mapVatPeriod),
     portfolio: portfolioRows.map(mapPortfolioPosition),
+    affiliateProfiles: affiliateRows,
+    tiktokUploads: uploadRows,
+    plannerTasks: plannerRows,
   };
 }
 

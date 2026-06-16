@@ -111,11 +111,11 @@ function buildMonthlyReport(
  * Import an MRDP report into the Finance OS ledger.
  * Creates one monthly upload per active month, with entity split per user choice.
  */
-export function importMrdpReport(
+export async function importMrdpReport(
   report: ParsedMrdpReport,
   assignment: MrdpEntityAssignment,
   accountId: string,
-): MrdpImportResult {
+): Promise<MrdpImportResult> {
   const uploadIds: string[] = [];
   let companyRevenue = 0;
   let personalRevenue = 0;
@@ -136,10 +136,11 @@ export function importMrdpReport(
     // Distribute sample transactions across months for preview data
     const txPerMonth = Math.ceil(quarter.transactions.length / 3);
 
-    months.forEach((month, i) => {
+    for (let i = 0; i < months.length; i++) {
+      const month = months[i]!;
       const revenue = revenues[i]!;
       const orderCount = counts[i]!;
-      if (revenue <= 0 && orderCount <= 0) return;
+      if (revenue <= 0 && orderCount <= 0) continue;
 
       const txSlice = quarter.transactions.slice(i * txPerMonth, (i + 1) * txPerMonth);
       const monthlyReport = buildMonthlyReport(
@@ -153,13 +154,13 @@ export function importMrdpReport(
       );
 
       const fileName = `MRDP ${report.year} ${quarter.quarter} → ${monthlyReport.periodLabel}`;
-      const record = saveTikTokUpload(monthlyReport, fileName, accountId, split);
+      const record = await saveTikTokUpload(monthlyReport, fileName, accountId, split);
       uploadIds.push(record.id);
       monthsImported++;
 
       if (entity === "avaken") companyRevenue += revenue;
       else personalRevenue += revenue;
-    });
+    }
   }
 
   companyRevenue = round2(companyRevenue);

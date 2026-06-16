@@ -102,12 +102,12 @@ export function BankAccountsManager() {
     setCustomInstitution("");
   }
 
-  function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!resolvedInstitution) return;
 
     const parsedBalance = balance.trim() ? parseFloat(balance.replace(/,/g, "")) : 0;
-    const created = addCustomAccount({
+    const created = await addCustomAccount({
       entity: tab,
       kind,
       name: name.trim() || `${resolvedInstitution} ${kind === "credit" ? "Credit" : "Account"}`,
@@ -118,7 +118,7 @@ export function BankAccountsManager() {
     });
 
     if (parsedBalance !== 0) {
-      setAccountBalances({ [created.id]: Math.abs(parsedBalance) });
+      await setAccountBalances({ [created.id]: Math.abs(parsedBalance) });
     }
 
     resetForm();
@@ -129,9 +129,9 @@ export function BankAccountsManager() {
     });
   }
 
-  function handleRemove(account: Account) {
+  async function handleRemove(account: Account) {
     if (isSeedAccount(account.id)) return;
-    removeCustomAccount(account.id);
+    await removeCustomAccount(account.id);
     setConfirmDeleteId(null);
     toast({
       title: `${account.name} removed`,

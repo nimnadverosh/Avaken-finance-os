@@ -98,11 +98,11 @@ export function TikTokImportFlow() {
     [accountId, selectedAccount?.handle],
   );
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     if (!report || !accountId) return;
     setSaving(true);
     try {
-      const record = saveTikTokUpload(report, fileName, accountId);
+      const record = await saveTikTokUpload(report, fileName, accountId);
       const account = getAffiliateAccounts().find((a) => a.id === accountId);
       setSavedLabel(record.summary.periodLabel);
       setStep("done");
