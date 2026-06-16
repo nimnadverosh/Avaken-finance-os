@@ -1,4 +1,12 @@
-/** Gate client-only storage reads until after React hydration (prevents SSR mismatch crashes). */
+/**
+ * Gate client-only storage reads until after React hydration (prevents SSR mismatch crashes).
+ *
+ * All localStorage-backed modules must call `isClientReady()` before reading:
+ * - mock-account-balances, mock-ledger, daily-updates
+ * - accounts-store, tiktok/store, tiktok/accounts
+ *
+ * UI that renders stored data should use `useClientStorageReady()` or `useMockDataVersion()`.
+ */
 
 let ready = false;
 

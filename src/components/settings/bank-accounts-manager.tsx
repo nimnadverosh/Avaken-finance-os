@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
+import { useClientStorageReady } from "@/hooks/use-client-storage-ready";
 import { useMockDataVersion } from "@/hooks/use-mock-data-version";
 import { formatCurrency } from "@/lib/format";
 import { getAccounts } from "@/lib/data/queries";
@@ -59,6 +60,7 @@ function isBankAccount(a: Account): boolean {
 
 /** Settings UI for adding and managing bank accounts and credit cards by entity. */
 export function BankAccountsManager() {
+  const storageReady = useClientStorageReady();
   const version = useMockDataVersion();
   const { toast, node: toastNode } = useToast();
   const [tab, setTab] = useState<EntityTab>("personal");
@@ -71,10 +73,24 @@ export function BankAccountsManager() {
   const [subtype, setSubtype] = useState<"current" | "savings" | "business">("current");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const accounts = useMemo(() => getAccounts(tab), [tab, version]);
+  const entityCounts = useMemo(() => {
+    if (!storageReady) return { personal: 0, avaken: 0 };
+    return {
+      personal: getAccounts("personal").length,
+      avaken: getAccounts("avaken").length,
+    };
+  }, [storageReady, version]);
+
+  const accounts = useMemo(
+    () => (storageReady ? getAccounts(tab) : []),
+    [tab, storageReady, version],
+  );
   const bankAccounts = useMemo(() => accounts.filter(isBankAccount), [accounts]);
   const creditAccounts = useMemo(() => accounts.filter((a) => a.type === "credit"), [accounts]);
-  const customIds = useMemo(() => new Set(getCustomAccounts().map((a) => a.id)), [version]);
+  const customIds = useMemo(
+    () => (storageReady ? new Set(getCustomAccounts().map((a) => a.id)) : new Set<string>()),
+    [storageReady, version],
+  );
 
   const resolvedInstitution =
     institution === "Other" ? customInstitution.trim() || "Other" : institution;
@@ -141,7 +157,7 @@ export function BankAccountsManager() {
             {(Object.keys(ENTITY_META) as EntityTab[]).map((entity) => {
               const meta = ENTITY_META[entity];
               const Icon = meta.icon;
-              const count = getAccounts(entity).length;
+              const count = entityCounts[entity];
               return (
                 <button
                   key={entity}
@@ -266,25 +282,33 @@ export function BankAccountsManager() {
         </form>
       </Card>
 
-      <AccountSection
-        title="Bank accounts"
-        hint="Current, savings, and business operating accounts"
-        accounts={bankAccounts}
-        customIds={customIds}
-        confirmDeleteId={confirmDeleteId}
-        onConfirmDelete={setConfirmDeleteId}
-        onRemove={handleRemove}
-      />
+      {!storageReady ? (
+        <Card className="border-dashed p-6 text-center">
+          <p className="text-sm text-muted-foreground">Loading saved accounts…</p>
+        </Card>
+      ) : (
+        <>
+          <AccountSection
+            title="Bank accounts"
+            hint="Current, savings, and business operating accounts"
+            accounts={bankAccounts}
+            customIds={customIds}
+            confirmDeleteId={confirmDeleteId}
+            onConfirmDelete={setConfirmDeleteId}
+            onRemove={handleRemove}
+          />
 
-      <AccountSection
-        title="Credit cards"
-        hint="Outstanding balances owed — shown as debt in your net position"
-        accounts={creditAccounts}
-        customIds={customIds}
-        confirmDeleteId={confirmDeleteId}
-        onConfirmDelete={setConfirmDeleteId}
-        onRemove={handleRemove}
-      />
+          <AccountSection
+            title="Credit cards"
+            hint="Outstanding balances owed — shown as debt in your net position"
+            accounts={creditAccounts}
+            customIds={customIds}
+            confirmDeleteId={confirmDeleteId}
+            onConfirmDelete={setConfirmDeleteId}
+            onRemove={handleRemove}
+          />
+        </>
+      )}
     </div>
   );
 }

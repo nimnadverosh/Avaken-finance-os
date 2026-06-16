@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { CLIENT_READY, isClientReady } from "./client-ready";
 import type { Entity } from "./data/types";
 
 interface EntityConfig {
@@ -30,10 +31,20 @@ export function EntityProvider({ children }: { children: React.ReactNode }) {
   const [entity, setEntityState] = useState<Entity>("consolidated");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Entity | null;
-    if (stored && ENTITIES.some((e) => e.id === stored)) {
-      setEntityState(stored);
+    const loadStored = () => {
+      const stored = window.localStorage.getItem(STORAGE_KEY) as Entity | null;
+      if (stored && ENTITIES.some((e) => e.id === stored)) {
+        setEntityState(stored);
+      }
+    };
+
+    if (isClientReady()) {
+      loadStored();
+      return;
     }
+
+    window.addEventListener(CLIENT_READY, loadStored, { once: true });
+    return () => window.removeEventListener(CLIENT_READY, loadStored);
   }, []);
 
   const setEntity = useCallback((e: Entity) => {
