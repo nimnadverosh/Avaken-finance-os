@@ -24,6 +24,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "Overview" },
+  { label: "Bank accounts", href: "/accounts", icon: Landmark, group: "Overview" },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight, group: "Overview" },
   { label: "Subscriptions", href: "/subscriptions", icon: CreditCard, badge: "19", group: "Overview" },
 

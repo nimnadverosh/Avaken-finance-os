@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Building2,
   Check,
@@ -9,6 +10,7 @@ import {
   LineChart,
   Pencil,
   PiggyBank,
+  Plus,
   X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -180,10 +182,18 @@ export function AccountsStrip({ accounts }: { accounts: Account[] }) {
               </Button>
             </div>
           ) : (
-            <Button type="button" variant="outline" size="sm" onClick={startEditing}>
-              <Pencil className="size-3.5" />
-              Correct balances
-            </Button>
+            <>
+              <Button type="button" variant="outline" size="sm" asChild>
+                <Link href="/accounts">
+                  <Plus className="size-3.5" />
+                  Add account
+                </Link>
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={startEditing}>
+                <Pencil className="size-3.5" />
+                Correct balances
+              </Button>
+            </>
           )}
         </div>
       </div>
