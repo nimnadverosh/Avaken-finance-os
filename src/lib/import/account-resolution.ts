@@ -1,3 +1,4 @@
+import { findAccountByInstitution } from "@/lib/data/accounts-store";
 import type { ResolvedEntity } from "./entity-resolution";
 
 /** Personal current + savings (excludes credit cards and investments). */
@@ -68,11 +69,18 @@ export function resolvePersonalAccountId(
   if (s.includes("apple pay") || s.includes("applepay")) return "starling";
 
   if (credit) {
-    if (s.includes("visa") || s.includes("mastercard")) return "barclays-credit";
-    return null;
+    if (s.includes("visa") || s.includes("mastercard")) {
+      const match = findAccountByInstitution("personal", text, "credit");
+      return match?.id ?? "barclays-credit";
+    }
+    const custom = findAccountByInstitution("personal", text, "credit");
+    return custom?.id ?? null;
   }
 
-  if (bank || !s.trim()) return "starling";
+  if (bank || !s.trim()) {
+    const fallback = findAccountByInstitution("personal", text, "bank");
+    return fallback?.id ?? "starling";
+  }
 
   return null;
 }
@@ -97,7 +105,8 @@ export function resolveAccountIdFromInstitution(
   if (s.includes("tide")) return "tide";
   if (s.includes("etoro")) return "etoro";
 
-  return "tide";
+  const custom = findAccountByInstitution("avaken", text, bucket === "credit" ? "credit" : "bank");
+  return custom?.id ?? "tide";
 }
 
 export function inferBalanceBucket(

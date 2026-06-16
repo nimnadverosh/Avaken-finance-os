@@ -1,5 +1,5 @@
 import { isClientReady } from "@/lib/client-ready";
-import { accounts as seedAccounts } from "./mock";
+import { getAllAccountsBase } from "./accounts-store";
 import { PERSONAL_CREDIT_ACCOUNT_IDS } from "@/lib/import/account-resolution";
 import type { Account } from "./types";
 import type { HermesAccountBalance } from "@/lib/hermes/types";
@@ -40,10 +40,10 @@ function notifyAccountsChanged(): void {
   window.dispatchEvent(new CustomEvent(MOCK_ACCOUNTS_CHANGED));
 }
 
-/** Seed accounts with screenshot-synced balances applied on the client. */
+/** Seed + custom accounts with screenshot-synced balances applied on the client. */
 export function getLedgerAccounts(): Account[] {
   hydrateFromStorage();
-  return seedAccounts.map((a) => ({
+  return getAllAccountsBase().map((a) => ({
     ...a,
     balance: balanceOverlay[a.id] ?? a.balance,
   }));
@@ -58,10 +58,11 @@ export function applyMockAccountBalances(updates: HermesAccountBalance[]): void 
   if (updates.length === 0) return;
   hydrateFromStorage();
   for (const u of updates) {
+    const account = getAllAccountsBase().find((a) => a.id === u.accountId);
     const isCredit =
       u.kind === "credit" ||
       (PERSONAL_CREDIT_ACCOUNT_IDS as readonly string[]).includes(u.accountId) ||
-      seedAccounts.find((a) => a.id === u.accountId)?.type === "credit";
+      account?.type === "credit";
     balanceOverlay[u.accountId] = isCredit ? Math.abs(u.balance) : u.balance;
   }
   persistOverlay();
@@ -83,10 +84,10 @@ export function setAccountBalances(updates: Record<string, number>): void {
   hydrateFromStorage();
 
   for (const [accountId, balance] of Object.entries(updates)) {
-    const seed = seedAccounts.find((a) => a.id === accountId);
-    if (!seed) continue;
+    const account = getAllAccountsBase().find((a) => a.id === accountId);
+    if (!account) continue;
     const isCredit =
-      seed.type === "credit" ||
+      account.type === "credit" ||
       (PERSONAL_CREDIT_ACCOUNT_IDS as readonly string[]).includes(accountId);
     balanceOverlay[accountId] = isCredit ? Math.abs(balance) : balance;
   }

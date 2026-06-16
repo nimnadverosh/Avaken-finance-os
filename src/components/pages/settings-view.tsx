@@ -9,6 +9,7 @@ import { PageHeader } from "./page-header";
 import { advancedImportLinks } from "@/lib/nav";
 import { TikTokSettingsCard } from "@/components/tiktok/tiktok-settings-card";
 import { TikTokUploadHistory } from "@/components/tiktok/tiktok-upload-history";
+import { BankAccountsManager } from "@/components/settings/bank-accounts-manager";
 
 const CONNECTIONS = [
   { id: "stripe", name: "Stripe", description: "Affiliate revenue → Tide payouts", status: "connected", color: "#635bff", initial: "S" },
@@ -60,6 +61,11 @@ export function SettingsView() {
             <Toggle label="Personal allowance taper" desc="Apply for income > £100k" on />
           </div>
         </Card>
+
+        {/* Bank accounts & credit cards */}
+        <div className="lg:col-span-3">
+          <BankAccountsManager />
+        </div>
 
         {/* TikTok earnings uploads */}
         <TikTokSettingsCard />

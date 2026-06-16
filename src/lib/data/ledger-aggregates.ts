@@ -1,7 +1,3 @@
-import {
-  PERSONAL_BANK_ACCOUNT_IDS,
-  PERSONAL_CREDIT_ACCOUNT_IDS,
-} from "@/lib/import/account-resolution";
 import { getLedgerAccounts } from "./mock-account-balances";
 
 export interface LedgerFinancialAggregates {
@@ -12,20 +8,30 @@ export interface LedgerFinancialAggregates {
   consolidatedLiquid: number;
 }
 
+function isPersonalBankAccount(type: string): boolean {
+  return type === "current" || type === "savings";
+}
+
+function isAvakenCashAccount(type: string): boolean {
+  return type === "business" || type === "savings";
+}
+
 /** Derive dashboard totals from per-account ledger balances (source of truth). */
 export function aggregatesFromLedger(): LedgerFinancialAggregates {
   const ledger = getLedgerAccounts();
 
-  const personalBankTotal = PERSONAL_BANK_ACCOUNT_IDS.reduce((sum, id) => {
-    return sum + (ledger.find((a) => a.id === id)?.balance ?? 0);
-  }, 0);
+  const personalBankTotal = ledger
+    .filter((a) => a.entity === "personal" && isPersonalBankAccount(a.type))
+    .reduce((sum, a) => sum + a.balance, 0);
 
-  const creditCardDebt = PERSONAL_CREDIT_ACCOUNT_IDS.reduce((sum, id) => {
-    const balance = ledger.find((a) => a.id === id)?.balance ?? 0;
-    return sum + Math.abs(balance);
-  }, 0);
+  const creditCardDebt = ledger
+    .filter((a) => a.entity === "personal" && a.type === "credit")
+    .reduce((sum, a) => sum + Math.abs(a.balance), 0);
 
-  const avakenTideBalance = ledger.find((a) => a.id === "tide")?.balance ?? 0;
+  const avakenTideBalance = ledger
+    .filter((a) => a.entity === "avaken" && isAvakenCashAccount(a.type))
+    .reduce((sum, a) => sum + a.balance, 0);
+
   const netPosition = personalBankTotal - creditCardDebt;
 
   return {
