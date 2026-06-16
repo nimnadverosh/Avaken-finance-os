@@ -1,4 +1,5 @@
 import { isClientReady } from "@/lib/client-ready";
+import { isDbLedgerEnabled, getDbTransactions } from "./db-cache";
 import { transactions as seedTransactions } from "./mock";
 import { isRealDataMode } from "./real-data-mode";
 import type { Transaction } from "./types";
@@ -39,8 +40,9 @@ function notifyLedgerChanged(): void {
   window.dispatchEvent(new CustomEvent(MOCK_LEDGER_CHANGED));
 }
 
-/** Seed data plus client-side imports (persisted in localStorage). */
+/** Seed / DB data plus client-side imports (persisted in localStorage when mock mode). */
 export function getLedgerTransactions(): Transaction[] {
+  if (isDbLedgerEnabled()) return getDbTransactions();
   hydrateFromStorage();
   if (isRealDataMode()) return [...importOverlay];
   return [...importOverlay, ...seedTransactions];

@@ -1,10 +1,12 @@
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { MobileNav } from "./mobile-nav";
+import { DbSyncProvider } from "@/components/providers/db-sync-provider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
+      <DbSyncProvider />
       <Sidebar />
       <div className="lg:pl-[248px]">
         <Topbar />

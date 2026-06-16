@@ -8,6 +8,7 @@ import { MOCK_LEDGER_CHANGED } from "@/lib/data/mock-ledger";
 import { TIKTOK_UPLOADS_CHANGED } from "@/lib/tiktok/store";
 import { TIKTOK_ACCOUNTS_CHANGED } from "@/lib/tiktok/accounts";
 import { CUSTOM_ACCOUNTS_CHANGED } from "@/lib/data/accounts-store";
+import { DB_LEDGER_CHANGED } from "@/lib/data/db-cache";
 
 /** Re-renders lists when mock transactions, balances, daily updates, or TikTok uploads change. */
 export function useMockDataVersion(): number {
@@ -22,6 +23,7 @@ export function useMockDataVersion(): number {
     window.addEventListener(TIKTOK_UPLOADS_CHANGED, bump);
     window.addEventListener(TIKTOK_ACCOUNTS_CHANGED, bump);
     window.addEventListener(CUSTOM_ACCOUNTS_CHANGED, bump);
+    window.addEventListener(DB_LEDGER_CHANGED, bump);
     return () => {
       window.removeEventListener(CLIENT_READY, bump);
       window.removeEventListener(MOCK_LEDGER_CHANGED, bump);
@@ -30,6 +32,7 @@ export function useMockDataVersion(): number {
       window.removeEventListener(TIKTOK_UPLOADS_CHANGED, bump);
       window.removeEventListener(TIKTOK_ACCOUNTS_CHANGED, bump);
       window.removeEventListener(CUSTOM_ACCOUNTS_CHANGED, bump);
+      window.removeEventListener(DB_LEDGER_CHANGED, bump);
     };
   }, []);
 

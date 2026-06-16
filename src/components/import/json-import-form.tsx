@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, FileJson, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { applyHermesAccountBalances } from "@/lib/data/account-balances";
 import { prependTransactionsToMock } from "@/lib/data/import";
+import { refreshDbLedger } from "@/lib/data/db-cache";
 import { ENTITIES } from "@/lib/entity-context";
 import type { JsonImportResponse } from "@/lib/hermes/types";
 import { cn } from "@/lib/utils";
@@ -106,7 +107,9 @@ export function JsonImportForm() {
       }
 
       const result = data as unknown as JsonImportResponse;
-      if (result.storage === "mock" && result.transactions?.length) {
+      if (result.storage === "database") {
+        await refreshDbLedger();
+      } else if (result.transactions?.length) {
         prependTransactionsToMock(result.transactions, result.batchId, "hermes.json.import");
       }
       applyHermesAccountBalances(result.accountBalances);

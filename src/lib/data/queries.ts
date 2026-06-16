@@ -26,6 +26,12 @@ import {
   tiktokAccounts,
   vatPeriods,
 } from "./mock";
+import {
+  getDbPortfolio,
+  getDbSubscriptions,
+  getDbVatPeriods,
+  isDbLedgerEnabled,
+} from "./db-cache";
 import { getLedgerAccounts } from "./mock-account-balances";
 import { getLedgerTransactions } from "./mock-ledger";
 import { getDailyFinancialSnapshot } from "./daily-updates";
@@ -354,14 +360,16 @@ export function recentTransactions(entity: Entity, limit = 8): Transaction[] {
 /* ---- Subscriptions ---- */
 export function listSubscriptions(entity: Entity): Subscription[] {
   if (isRealDataMode()) return [];
-  return inEntity(subscriptions, entity).slice().sort((a, b) => b.amount - a.amount);
+  const source = isDbLedgerEnabled() ? getDbSubscriptions() : subscriptions;
+  return inEntity(source, entity).slice().sort((a, b) => b.amount - a.amount);
 }
 
 export function subscriptionsByCategory(entity: Entity): CategorySlice[] {
   if (isRealDataMode()) return [];
   const palette = ["#10b981", "#34d399", "#38bdf8", "#a78bfa", "#f59e0b", "#f43f5e", "#22d3ee", "#fb7185"];
   const map = new Map<string, number>();
-  inEntity(subscriptions, entity).forEach((s) => {
+  const source = isDbLedgerEnabled() ? getDbSubscriptions() : subscriptions;
+  inEntity(source, entity).forEach((s) => {
     const m = s.cadence === "annual" ? s.amount / 12 : s.cadence === "weekly" ? s.amount * 4.33 : s.amount;
     map.set(s.category, (map.get(s.category) ?? 0) + m);
   });
@@ -374,7 +382,8 @@ export function upcomingRenewals(entity: Entity, days = 30): Subscription[] {
   if (isRealDataMode()) return [];
   const now = new Date();
   const horizon = new Date(now.getTime() + days * 86400_000);
-  return inEntity(subscriptions, entity)
+  const source = isDbLedgerEnabled() ? getDbSubscriptions() : subscriptions;
+  return inEntity(source, entity)
     .filter((s) => s.nextRenewal && new Date(s.nextRenewal) <= horizon)
     .sort((a, b) => +new Date(a.nextRenewal) - +new Date(b.nextRenewal));
 }
@@ -401,7 +410,8 @@ export function listTransactions(
 /* ---- VAT ---- */
 export function listVatPeriods(): VatPeriod[] {
   if (isRealDataMode()) return [];
-  return [...vatPeriods].sort((a, b) => +new Date(b.periodStart) - +new Date(a.periodStart));
+  const source = isDbLedgerEnabled() ? getDbVatPeriods() : vatPeriods;
+  return [...source].sort((a, b) => +new Date(b.periodStart) - +new Date(a.periodStart));
 }
 
 /* ---- TikTok ---- */
@@ -414,12 +424,14 @@ export function allAffiliates(
 /* ---- Portfolio ---- */
 export function getPortfolio(): PortfolioPosition[] {
   if (isRealDataMode()) return [];
-  return [...portfolio].sort((a, b) => b.value - a.value);
+  const source = isDbLedgerEnabled() ? getDbPortfolio() : portfolio;
+  return [...source].sort((a, b) => b.value - a.value);
 }
 
 export function portfolioTotals() {
-  const value = portfolio.reduce((a, p) => a + p.value, 0);
-  const pnl = portfolio.reduce((a, p) => a + p.pnl, 0);
+  const source = isDbLedgerEnabled() ? getDbPortfolio() : portfolio;
+  const value = source.reduce((a, p) => a + p.value, 0);
+  const pnl = source.reduce((a, p) => a + p.pnl, 0);
   const cost = value - pnl;
   const pnlPct = cost === 0 ? 0 : (pnl / cost) * 100;
   return { value, pnl, cost, pnlPct };

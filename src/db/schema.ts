@@ -43,6 +43,8 @@ const money = (name: string) => numeric(name, { precision: 14, scale: 2 });
 
 export const accounts = pgTable("accounts", {
   id: uuid("id").defaultRandom().primaryKey(),
+  /** Stable key matching mock seed ids (e.g. tide, starling) for imports and balance sync. */
+  slug: text("slug").unique(),
   name: text("name").notNull(),
   institution: text("institution").notNull(),
   type: accountTypeEnum("type").notNull(),

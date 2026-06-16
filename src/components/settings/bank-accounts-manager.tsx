@@ -66,7 +66,7 @@ export function BankAccountsManager() {
   const [tab, setTab] = useState<EntityTab>("personal");
   const [kind, setKind] = useState<AddAccountKind>("bank");
   const [name, setName] = useState("");
-  const [institution, setInstitution] = useState(INSTITUTION_PRESETS[0]!.name);
+  const [institution, setInstitution] = useState<string>(INSTITUTION_PRESETS[0]!.name);
   const [customInstitution, setCustomInstitution] = useState("");
   const [last4, setLast4] = useState("");
   const [balance, setBalance] = useState("");

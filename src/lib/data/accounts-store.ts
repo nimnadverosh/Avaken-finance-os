@@ -4,6 +4,7 @@
  */
 
 import { isClientReady } from "@/lib/client-ready";
+import { isDbLedgerEnabled, getDbAccounts } from "./db-cache";
 import { accounts as seedAccounts } from "./mock";
 import type { Account, AccountType } from "./types";
 
@@ -120,7 +121,8 @@ export function getCustomAccountsForEntity(entity: StoredEntity): CustomAccountR
 
 export function getAllAccountsBase(): Account[] {
   hydrate();
-  return [...seedAccounts, ...customAccounts.map(toAccount)];
+  const base = isDbLedgerEnabled() ? getDbAccounts() : seedAccounts;
+  return [...base, ...customAccounts.map(toAccount)];
 }
 
 function toAccount(record: CustomAccountRecord): Account {

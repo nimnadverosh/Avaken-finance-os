@@ -14,6 +14,7 @@ import { ImportStatusAlert } from "./import-status-alert";
 import { applyHermesAccountBalances } from "@/lib/data/account-balances";
 import { getLedgerAccounts } from "@/lib/data/mock-account-balances";
 import { prependTransactionsToMock } from "@/lib/data/import";
+import { refreshDbLedger } from "@/lib/data/db-cache";
 import { messageForAnalyzeError, messageForImportError } from "@/lib/screenshots/errors";
 import {
   buildScreenshotSources,
@@ -166,7 +167,11 @@ export function ScreenshotImportFlow() {
       }
 
       const result = data as unknown as ScreenshotImportResponse;
-      prependTransactionsToMock(result.transactions, batchId);
+      if (result.storage === "database") {
+        await refreshDbLedger();
+      } else {
+        prependTransactionsToMock(result.transactions, batchId);
+      }
       applyHermesAccountBalances(result.accountBalances ?? accountBalances);
       setImportedCount(result.imported);
       setImportStorage(result.storage);

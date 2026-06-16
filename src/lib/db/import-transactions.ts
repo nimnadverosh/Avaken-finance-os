@@ -28,6 +28,15 @@ async function resolveAccountId(entity: "personal" | "avaken"): Promise<string |
 
   if (match) return match.id;
 
+  const defaultSlug = entity === "personal" ? "starling" : "tide";
+  const [slugMatch] = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.entity, entity), eq(accounts.slug, defaultSlug)))
+    .limit(1);
+
+  if (slugMatch) return slugMatch.id;
+
   const [fallback] = await db
     .select({ id: accounts.id })
     .from(accounts)
